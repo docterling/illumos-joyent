@@ -85,6 +85,35 @@ custr_reset(custr_t *cus)
 	cus->cus_data[0] = '\0';
 }
 
+void
+custr_delete(custr_t *cus, ssize_t idx, size_t len)
+{
+	/*
+	 * Convert an index relative to the end of the string to one relative
+	 * to the start of the string.
+	 */
+	if (idx < 0)
+		idx += cus->cus_strlen;
+
+	if (idx < 0 || idx > cus->cus_strlen)
+		return;
+
+	/* If range to delete goes to the end of the string, just truncate */
+	if (idx + len > cus->cus_strlen) {
+		cus->cus_data[idx] = '\0';
+		cus->cus_strlen = idx;
+		return;
+	}
+
+	/*
+	 * Shift the remaining characters (including the terminating NUL)
+	 * after the deleted range left.
+	 */
+	(void) memmove(cus->cus_data + idx + len, cus->cus_data + idx,
+	    cus->cus_strlen - idx - len + 1);
+	cus->cus_strlen -= len;
+}
+
 size_t
 custr_len(custr_t *cus)
 {

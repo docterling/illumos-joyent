@@ -142,6 +142,23 @@ size_t custr_len(custr_t *);
 void custr_reset(custr_t *);
 
 /*
+ * Starting from a given index, remove a given number of bytes from the string.
+ *
+ * If the index is less than zero, the index is from the end of the string
+ * (i.e. an index of -1 is the last character of the string, -2 is the second
+ * to last, etc).
+ *
+ * If the index lies past the the end of the string or (for a negative index)
+ * before the start of the string, no changes are made.
+ *
+ * If the amount to remove is larger than the remaining bytes in the string,
+ * the remainder of the string after the given index is removed.  This allows
+ * for usage such as custr_delete(cus, idx, SSIZE_MAX) to truncate a string
+ * from the given index without concern to the actual size.
+ */
+void custr_delete(custr_t *, ssize_t, size_t);
+
+/*
  * Retrieve a const pointer to a NUL-terminated string version of the contents
  * of the dynamic string.  Storage for this string should not be freed, and
  * the pointer will be invalidated by any mutations to the dynamic string.
