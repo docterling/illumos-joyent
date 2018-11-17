@@ -24,6 +24,7 @@
 \
 \ Copyright 2015 Toomas Soome <tsoome@me.com>
 \ Copyright 2019 OmniOS Community Edition (OmniOSce) Association.
+\ Copyright (c) 2019 Joyent, Inc.
 
 marker task-menu-commands.4th
 
@@ -45,6 +46,58 @@ variable debug_state
 0 root_state !
 
 also menu-namespace also menu-command-helpers
+
+\ PATH_MAX + 6
+create chaincmd 1030 chars allot
+
+\ Place string into an allocated buffer
+\
+\ e.g
+\ create mystring 32 chars allot
+\ s" Burning down " mystring place
+\
+: place over over >r >r char+ swap chars move r> r> c! ;
+
+\ Append string
+\
+\ e.g.
+\ s" the house!" mystring append
+\
+: append over over >r >r count chars + swap chars move r> r> dup >r c@ + r> c! ;
+
+\
+\ Rollback to previous platform image.
+\ Used by Joyent Triton
+\
+: rollback_boot ( N -- NOTREACHED )
+	dup
+	s" prev-platform" getenv s" bootfile" setenv
+	s" prev-archive" getenv s" boot_archive" set-module-path
+	s" prev-hash" getenv s" boot_archive.hash" set-module-path
+	0 boot ( state -- )
+;
+
+\
+\ Boot from ipxe kernel
+\ Used by Joyent Triton when booted in BIOS/CSM mode
+\
+: ipxe_boot ( N -- NOTREACHED )
+	dup
+	s" ipxe-bootfile" getenv s" bootfile" setenv
+	s" ipxe-archive" getenv s" boot_archive" set-module-path
+	s" boot_archive.hash" disable-module
+	0 boot ( state -- )
+;
+
+\
+\ Chainload the ipxe EFI binary
+\ Used by Joyent Triton when booted in UEFI mode
+\
+: ipxe_chainload ( N -- NOTREACHED )
+	s" chain " chaincmd place
+	s" ipxe-efi" getenv chaincmd append
+	chaincmd count evaluate
+;
 
 \
 \ Boot
@@ -313,6 +366,53 @@ also menu-namespace also menu-command-helpers
 		reconfigure_disable
 	else
 		reconfigure_enable
+	then
+
+	TRUE \ loop menu again
+;
+
+\
+\ Disaster Recovery boot
+\
+
+: dr_enabled? ( -- flag )
+	s" noimport" getenv -1 <> dup if
+		swap drop ( c-addr flag -- flag )
+	then
+;
+
+: dr_enable ( -- )
+	s" set noimport=true" evaluate
+	s" smartos" getenv? if
+		s" set standalone=true" evaluate
+		s" set smartos=false" evaluate
+	then
+;
+
+: dr_disable ( -- )
+	s" noimport" unsetenv
+	s" standalone" unsetenv
+	s" smartos" getenv? if
+		s" set smartos=true" evaluate
+	then
+;
+
+: init_dr ( N -- N )
+	dr_enabled? if
+		toggle_menuitem ( n -- n )
+	then
+;
+
+: toggle_dr ( N -- N TRUE )
+	toggle_menuitem
+	menu-redraw
+
+	\ Now we're going to make the change effective
+
+	dup toggle_stateN @ 0= if
+		dr_disable
+	else
+		dr_enable
 	then
 
 	TRUE \ loop menu again
