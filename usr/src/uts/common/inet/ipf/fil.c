@@ -302,6 +302,8 @@ static ipfunc_resolve_t fr_availfuncs[] = {
 	{ "fr_srcgrpmap", fr_srcgrpmap, fr_grpmapinit },
 	{ "fr_dstgrpmap", fr_dstgrpmap, fr_grpmapinit },
 #endif
+	{ "ipf_zstate_pass", ipf_zstate_pass, ipf_zstate_init },
+	{ "ipf_zstate_block", ipf_zstate_block, ipf_zstate_init },
 	{ "", NULL }
 };
 

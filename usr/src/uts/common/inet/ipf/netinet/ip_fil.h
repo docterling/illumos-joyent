@@ -1559,6 +1559,11 @@ extern	int	ipllog __P((int, fr_info_t *, void **, size_t *, int *, int,
 			    ipf_stack_t *));
 extern	void	fr_logunload __P((ipf_stack_t *));
 
+/* SmartOS single-FD global-zone state accumulator */
+extern int ipf_zstate_init __P((frentry_t *, ipf_stack_t *));
+extern frentry_t *ipf_zstate_pass __P((fr_info_t *, uint32_t *));
+extern frentry_t *ipf_zstate_block __P((fr_info_t *, uint32_t *));
+
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));
 extern	int		fr_copytolog __P((int, char *, int));
 extern	u_short		fr_cksum __P((mb_t *, ip_t *, int, void *));

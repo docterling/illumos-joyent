@@ -43,7 +43,7 @@ IPFTEST_OBJS=	ipftest.o ipfzone.o \
 		ipf_y.o ipf_l.o \
 		ipnat_y.o ipnat_l.o \
 		ippool_y.o ippool_l.o \
-		ip_pool.o radix.o
+		ip_pool.o radix.o zstate.o
 
 OBJS=		$(IPF_OBJS) $(IPFS_OBJS) $(IPFSTAT_OBJS) \
 		$(IPMON_OBJS) $(IPNAT_OBJS) $(IPPOOL_OBJS) $(IPFTEST_OBJS)
