@@ -199,6 +199,9 @@ do_ioctl(int fd, int cmd, void *arg)
 		break;
 	}
 
+	if (error == 0)
+		errno = 0;
+
 	return (error);
 }
 

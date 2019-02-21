@@ -234,7 +234,7 @@ typedef struct dk_efi {
 	diskaddr_t	 dki_lba;	/* starting block */
 	len_t		 dki_length;	/* length in bytes */
 	union {
-		efi_gpt_t 	*_dki_data;
+		efi_gpt_t	*_dki_data;
 		uint64_t	_dki_data_64;
 	} dki_un;
 #define	dki_data	dki_un._dki_data

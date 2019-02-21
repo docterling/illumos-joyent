@@ -1499,7 +1499,7 @@ dboot_add_memlist(uint64_t start, uint64_t end)
 		    mod_end >= CORRUPT_REGION_START) {
 			if (prom_debug) {
 				dboot_printf("disabling RICHMOND-16 workaround "
-				"due to module #%d: "
+				"due to module #%u: "
 				"name %s addr %lx size %lx\n",
 				    i, (char *)(uintptr_t)modules[i].bm_name,
 				    (ulong_t)modules[i].bm_addr,

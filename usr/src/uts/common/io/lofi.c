@@ -1775,9 +1775,8 @@ lofi_urw(struct lofi_state *lsp, uint16_t fmode, diskaddr_t off, size_t size,
 	/*
 	 * 1024 * 1024 apes cmlb_tg_max_efi_xfer as a reasonable max.
 	 */
-	if (size == 0 ||
-	    size > 1024 * 1024 ||
-	    size % (1 << lsp->ls_lbshift))
+	if (size == 0 || size > 1024 * 1024 ||
+	    (size % (1 << lsp->ls_lbshift)) != 0)
 		return (EINVAL);
 
 	iov.iov_base = (void *)arg;
@@ -3485,7 +3484,7 @@ lofi_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *credp,
 
 	case DKIOCGETEFI:
 		if (ddi_copyin((void *)arg, &user_efi,
-		    sizeof (dk_efi_t), flag))
+		    sizeof (dk_efi_t), flag) != 0)
 			return (EFAULT);
 
 		return (lofi_urw(lsp, FREAD,
@@ -3495,7 +3494,7 @@ lofi_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *credp,
 
 	case DKIOCSETEFI:
 		if (ddi_copyin((void *)arg, &user_efi,
-		    sizeof (dk_efi_t), flag))
+		    sizeof (dk_efi_t), flag) != 0)
 			return (EFAULT);
 
 		return (lofi_urw(lsp, FWRITE,

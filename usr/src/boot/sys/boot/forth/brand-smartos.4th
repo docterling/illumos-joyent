@@ -21,15 +21,15 @@
 	1+ \ increase y for next time we're called
 ;
 
-: brand ( x y -- ) \ "illumos" [wide] logo in B/W (5 rows x 39 columns)
+: brand ( x y -- ) \ "joyent" [wide] logo in B/W (7 rows x 42 columns)
 
-	s"       #                                   " brand+ 
-	s"       #  ####  #   # ###### #    # #####  " brand+ 
-	s"       # #    #  # #  #      ##   #   #    " brand+ 
-	s"       # #    #   #   #####  # #  #   #    " brand+ 
-	s" #     # #    #   #   #      #  # #   #    " brand+ 
-	s" #     # #    #   #   #      #   ##   #    " brand+ 
-	s"  #####   ####    #   ###### #    #   #  TM" brand+ 
+	s"       #                                   " brand+
+	s"       #  ####  #   # ###### #    # #####  " brand+
+	s"       # #    #  # #  #      ##   #   #    " brand+
+	s"       # #    #   #   #####  # #  #   #    " brand+
+	s" #     # #    #   #   #      #  # #   #    " brand+
+	s" #     # #    #   #   #      #   ##   #    " brand+
+	s"  #####   ####    #   ###### #    #   #  TM" brand+
 
 	2drop
 ;

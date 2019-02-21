@@ -28,12 +28,17 @@
 #include <sys/efi_partition.h>
 
 #include <assert.h>
+#include <ctype.h>
 #include <uuid/uuid.h>
 
 #include <mdb/mdb_modapi.h>
 #include <mdb/mdb_debug.h>
 
 #include "installboot.h"
+
+#ifdef _BIG_ENDIAN
+#error needs porting for big-endian system
+#endif
 
 /* See usr/src/grub/grub-0.97/stage1/stage1.h */
 #define	GRUB_VERSION_OFF (0x3e)
@@ -113,9 +118,6 @@ print_fdisk_part(struct ipart *ip, size_t nr)
 		mdb_snprintf(typestr, sizeof (typestr), "%#lx", ip->systid);
 	}
 
-	/*
-	 * Why not encode things like this? It's cool!
-	 */
 	mdb_snprintf(begchs, sizeof (begchs), "%hu/%hu/%hu",
 	    (uint16_t)ip->begcyl | (uint16_t)(ip->begsect & ~0x3f) << 2,
 	    (uint16_t)ip->beghead, (uint16_t)ip->begsect & 0x3f);
@@ -286,9 +288,13 @@ print_gpe(efi_gpe_t *gpe, size_t nr, int show_guid)
 	} else {
 		char name[EFI_PART_NAME_LEN + 1] = "";
 
-		/* Obviously not great.... */
+		/*
+		 * Hopefully, ASCII is sufficient for any naming we care about.
+		 */
 		for (size_t i = 0; i < sizeof (name); i++) {
-			name[i] = (char)gpe->efi_gpe_PartitionName[i];
+			ushort_t wchar = gpe->efi_gpe_PartitionName[i];
+
+			name[i] = (char)(isascii(wchar) ? wchar : '?');
 		}
 
 		mdb_printf("%-4u %-19s %-13llu %-13llu %#-8llx %s\n",
