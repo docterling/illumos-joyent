@@ -10,7 +10,7 @@
 #
 
 #
-# Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+# Copyright (c) 2019 Joyent, Inc.  All rights reserved.
 #
 
 LIBRARY =	librefhash.a
@@ -20,21 +20,17 @@ OBJECTS =	list.o \
 HASHCOMDIR =	$(SRC)/common/refhash
 LISTCOMDIR =	$(SRC)/common/list
 
-include ../../Makefile.lib
+include $(SRC)/lib/Makefile.lib
 
 SRCDIR =	../common
 SRCS =		$(HASHCOMDIR)/refhash.c $(LISTCOMDIR)/list.c
-LIBS =		$(DYNLIB) $(LINTLIB)
+LIBS =		$(DYNLIB)
 
-LDLIBS += 	-lc -lumem
-
-$(LINTLIB) := 	SRCS = $(SRCDIR)/$(LINTSRC)
+LDLIBS += 	-lc
 
 .KEEP_STATE:
 
 all: $(LIBS)
-
-lint: lintcheck
 
 include ../../Makefile.targ
 
