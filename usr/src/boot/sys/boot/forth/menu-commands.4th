@@ -50,21 +50,6 @@ also menu-namespace also menu-command-helpers
 \ PATH_MAX + 6
 create chaincmd 1030 chars allot
 
-\ Place string into an allocated buffer
-\
-\ e.g
-\ create mystring 32 chars allot
-\ s" Burning down " mystring place
-\
-: place over over >r >r char+ swap chars move r> r> c! ;
-
-\ Append string
-\
-\ e.g.
-\ s" the house!" mystring append
-\
-: append over over >r >r count chars + swap chars move r> r> dup >r c@ + r> c! ;
-
 \
 \ Rollback to previous platform image.
 \ Used by Joyent Triton
