@@ -10,7 +10,7 @@
 #
 
 #
-# Copyright (c) 2019, Joyent, Inc.
+# Copyright 2015 Toomas Soome <tsoome@me.com>
 #
 
 .KEEP_STATE:
@@ -29,19 +29,13 @@ all clean clobber: $(SUBDIRS)
 
 #
 # The directories in INSTDIRS depend implicitly on SUBDIRS being built already.
-# We don't use explicit dependencies because we only want to make the "install"
-# target in INSTDIRS, not in SUBDIRS.
+# We use .WAIT instead of explicit dependencies because we only want to make
+# the "install" target in INSTDIRS, not in SUBDIRS.
 #
 # If adding SUBDIRS which are not dependencies of INSTDIRS, "install: all"
 # rules should be added to the Makefiles in those directories.
 #
-# Note that we have to hard-code our descent here: a dmake bug fails to set
-# $(TARGET) appropriately otherwise.
-#
-install: all
-	@cd i386; pwd; $(MAKE) $(MFLAGS) $(TARGET)
-	@cd efi; pwd; $(MAKE) $(MFLAGS) $(TARGET)
-
+install: all .WAIT $(INSTDIRS)
 
 .PARALLEL: libstand libficl libcrypto
 
