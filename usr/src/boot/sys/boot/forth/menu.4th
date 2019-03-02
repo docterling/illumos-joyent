@@ -749,7 +749,10 @@ also menu-infrastructure definitions
 	dup 9 > if drop 9 then
 	dup 0 < if drop 0 then
 
-	s" headnode" getenv? if
+	\ getenv? leaves -1 on stack if the env var exists.  Thus if both
+	\ headnode and ipxe exist then the sum of what will be left on the
+	\ stack should be -2.
+	s" headnode" getenv? s" ipxe" getenv? + -2 = if
 		s" ipxe" getenv s" true" compare 0= if
 			s" Autoboot in N seconds from PXE. [Space] to pause" ( n -- n c-addr/u )
 		else
