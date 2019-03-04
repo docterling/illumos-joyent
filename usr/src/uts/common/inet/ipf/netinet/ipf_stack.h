@@ -46,6 +46,7 @@ struct ipf_stack {
 	struct ipf_stack	*ifs_gz_cont_ifs;
 	netid_t			ifs_netid;
 	zoneid_t		ifs_zone;
+	zoneid_t		ifs_zone_did;
 	boolean_t		ifs_gz_controlled;
 
 	/* ipf module */

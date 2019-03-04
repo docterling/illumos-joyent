@@ -2589,6 +2589,14 @@ ipf_stack_t *ifs;
 		(void) fr_dolog(fin, &pass);
 	}
 #endif
+	if ((pass & FR_BLOCK) != 0 && ifs->ifs_gz_controlled) {
+		extern void ipf_block_cfwlog(frentry_t *, fr_info_t *,
+		    ipf_stack_t *);
+		/*
+		 * XXX KEBE SAYS also check for whatever we really NEED to do
+		 */
+		ipf_block_cfwlog(fr, fin, ifs);
+	}
 
 	/*
 	 * The FI_STATE flag is cleared here so that calling fr_checkstate

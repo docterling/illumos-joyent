@@ -3932,6 +3932,159 @@ int flags;
 }
 
 
+/*
+ * XXX KEBE SAYS MOVE THIS TO A HEADER FILE...
+ */
+#define	CFWEV_BLOCK	1
+#define	CFWEV_BEGIN	2
+#define	CFWEV_END	3
+#define	CFWDIR_IN	1
+#define	CFWDIR_OUT	2
+typedef struct cfwev_s {
+	uint16_t cfwev_type;	/* BEGIN, END, BLOCK */
+	uint8_t cfwev_protocol;	/* IPPROTO_* */
+	uint8_t cfwev_direction;
+	/*
+	 * The above "direction" informs if src/dst are local/remote or
+	 * remote/local.
+	 */
+	uint16_t cfwev_sport;	/* Source port */
+	uint16_t cfwev_dport;	/* Dest. port */
+	in6_addr_t cfwev_saddr;	/* Can be clever later with unions, w/not. */
+	in6_addr_t cfwev_daddr;
+	/* XXX KEBE ASKS hrtime for relative time from some start instead? */
+	struct timeval cfwev_tstamp;
+	zoneid_t cfwev_zonedid;	/* Pullable from ipf_stack_t. */
+	uint32_t cfwev_ruleid;	/* Pullable from fr_info_t. */
+} cfwev_t;
+
+static inline
+zoneid_t ifs_to_did(ipf_stack_t *ifs)
+{
+	if (ifs->ifs_zone_did == 0) {
+		zone_t *zone;
+
+		/*
+		 * Because we can't get the zone_did at initialization time
+		 * because most zone data isn't readily available then,
+		 * cement the did in place now.
+		 */
+		ASSERT(ifs->ifs_zone != GLOBAL_ZONEID);
+		zone = zone_find_by_id(ifs->ifs_zone);
+		if (zone != NULL) {
+			ifs->ifs_zone_did = zone->zone_did;
+			zone_rele(zone);
+		}
+		/* Else we are either in shutdown or something weirder. */
+	}
+	return (ifs->ifs_zone_did);
+}
+
+/*
+ * ipf_block_cfwlog()
+ *
+ * Called by fr_check().  Record drop events for a global-zone data collector.
+ * Use rest-of-ipf-style names for the parameters.
+ */
+void
+ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
+{
+	cfwev_t event = {0};
+
+	/* We need a rule. */
+	if (fr == NULL)
+		return;
+
+	event.cfwev_type = CFWEV_BLOCK;
+	/*
+	 * IPF code elsewhere does the cheesy single-flag check, even thogh
+	 * there are two flags in a rule (one for in, one for out).
+	 */
+	event.cfwev_direction = (fr->fr_flags & FR_INQUE) ?
+	    CFWDIR_IN : CFWDIR_OUT;
+
+	event.cfwev_protocol = fin->fin_p;
+	/* XXX KEBE SAYS ICMP stuff should fall in here too. */
+	event.cfwev_sport = fin->fin_sport;
+	event.cfwev_dport = fin->fin_dport;
+
+	memcpy(&event.cfwev_saddr, &fin->fin_src6, sizeof (in6_addr_t));
+	memcpy(&event.cfwev_daddr, &fin->fin_dst6, sizeof (in6_addr_t));
+
+	/*
+	 * XXX KEBE ASKS -> something better instead?!?
+	 * uniqtime() is what ipf's GETKTIME() uses. It does give us tv_usec,
+	 * but I'm not sure if it's suitable for what we need.
+	 */
+	uniqtime(&event.cfwev_tstamp);
+	event.cfwev_zonedid = ifs_to_did(ifs);
+	event.cfwev_ruleid = fin->fin_rule;
+}
+
+/*
+ * ipstate_cfwlog()
+ *
+ * Twin of ipstate_log() below, but records state events for a global-zone
+ * data collector.
+ */
+void
+ipstate_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
+{
+	cfwev_t event = {0};
+
+	switch (type) {
+	case ISL_NEW:
+	case ISL_CLONE:
+		event.cfwev_type = CFWEV_BEGIN;
+		break;
+	case ISL_EXPIRE:
+	case ISL_FLUSH:
+	case ISL_REMOVE:
+	case ISL_KILLED:
+	case ISL_ORPHAN:
+		event.cfwev_type = CFWEV_END;
+		break;
+	default:
+		event.cfwev_type = CFWEV_BLOCK;
+		break;
+	}
+
+	/*
+	 * IPF code elsewhere does the cheesy single-flag check, even thogh
+	 * there are two flags in a rule (one for in, one for out).
+	 */
+	event.cfwev_direction = (is->is_rule->fr_flags & FR_INQUE) ?
+	    CFWDIR_IN : CFWDIR_OUT;
+	event.cfwev_protocol = is->is_p;
+	switch (is->is_p) {
+	case IPPROTO_TCP:
+	case IPPROTO_UDP:
+		event.cfwev_sport = is->is_sport;
+		event.cfwev_dport = is->is_dport;
+		break;
+	case IPPROTO_ICMP:
+	case IPPROTO_ICMPV6:
+		/* Scribble the ICMP type in sport... */
+		event.cfwev_sport = is->is_icmp.ici_type;
+		break;
+	}
+
+	memcpy(&event.cfwev_saddr, &is->is_src, sizeof (in6_addr_t));
+	memcpy(&event.cfwev_daddr, &is->is_dst, sizeof (in6_addr_t));
+
+	/*
+	 * XXX KEBE ASKS -> something better instead?!?
+	 * uniqtime() is what ipf's GETKTIME() uses. It does give us tv_usec,
+	 * but I'm not sure if it's suitable for what we need.
+	 */
+	uniqtime(&event.cfwev_tstamp);
+	event.cfwev_zonedid = ifs_to_did(ifs);
+	/* XXX KEBE ASKS -> good enough? */ 
+	event.cfwev_ruleid = is->is_rulen;
+
+	/* XXX KEBE SAYS Then we do something with it. */
+}
+
 /* ------------------------------------------------------------------------ */
 /* Function:    ipstate_log                                                 */
 /* Returns:     Nil                                                         */
@@ -3999,6 +4152,14 @@ ipf_stack_t *ifs;
 		ATOMIC_INCL(ifs->ifs_ips_stats.iss_logged);
 	} else {
 		ATOMIC_INCL(ifs->ifs_ips_stats.iss_logfail);
+	}
+
+	if (ifs->ifs_gz_controlled) {
+		/*
+		 * XXX KEBE SAYS also check for whether or not we really NEED
+		 * to do so...
+		 */
+		ipstate_cfwlog(is, type, ifs);
 	}
 #endif
 }

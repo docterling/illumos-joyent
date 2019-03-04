@@ -420,6 +420,7 @@ ipf_stack_create_one(const netid_t id, const zoneid_t zid, boolean_t from_gz,
     ipf_stack_t *ifs_gz)
 {
 	ipf_stack_t	*ifs;
+	zone_t		*zone;
 
 #ifdef IPFDEBUG
 	cmn_err(CE_NOTE, "IP Filter:stack_create_one id=%d global=%d", id,
