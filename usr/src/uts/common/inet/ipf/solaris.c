@@ -420,7 +420,6 @@ ipf_stack_create_one(const netid_t id, const zoneid_t zid, boolean_t from_gz,
     ipf_stack_t *ifs_gz)
 {
 	ipf_stack_t	*ifs;
-	zone_t		*zone;
 
 #ifdef IPFDEBUG
 	cmn_err(CE_NOTE, "IP Filter:stack_create_one id=%d global=%d", id,
@@ -453,6 +452,10 @@ ipf_stack_create_one(const netid_t id, const zoneid_t zid, boolean_t from_gz,
 	ifs->ifs_gz_cont_ifs = ifs_gz;
 
 	ipf_kstat_init(ifs, from_gz);
+
+	/* The ipf_zstate choice gets stuck here. */
+	if (from_gz)
+		ifs->ifs_zstate_enabled = ipf_zstate_enabled;
 
 #ifdef IPFDEBUG
 	cmn_err(CE_CONT, "IP Filter:stack_create zone=%d", ifs->ifs_zone);
@@ -664,6 +667,9 @@ ipf_stack_destroy_one(const netid_t id, ipf_stack_t *ifs)
 	}
 
 	ipftuneable_free(ifs);
+
+	/* XXX KEBE SAYS USE-CALL */
+	ipf_zstate_clear(ifs);
 
 	RWLOCK_EXIT(&ifs->ifs_ipf_global);
 	RW_DESTROY(&ifs->ifs_ipf_mutex);

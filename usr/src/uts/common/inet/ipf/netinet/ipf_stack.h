@@ -317,6 +317,13 @@ struct ipf_stack {
 	char			*ifs_addmask_key;
 	char			*ifs_rn_zeros;
 	char			*ifs_rn_ones;
+
+	/* zstate.c */
+	ipf_zstate_enabled_t	ifs_zstate_enabled;
+	/* XXX KEBE SAYS USE-CALL */
+	void			*ifs_zstate_trackers;
+	uint_t			ifs_zstate_trackers_size;
+
 #ifdef KERNEL
 	/* kstats for inbound and outbound */
 	kstat_t			*ifs_kstatp[2];

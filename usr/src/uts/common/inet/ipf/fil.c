@@ -302,6 +302,7 @@ static ipfunc_resolve_t fr_availfuncs[] = {
 	{ "fr_srcgrpmap", fr_srcgrpmap, fr_grpmapinit },
 	{ "fr_dstgrpmap", fr_dstgrpmap, fr_grpmapinit },
 #endif
+	/* XXX KEBE SAYS USE-CALL */
 	{ "ipf_zstate_pass", ipf_zstate_pass, ipf_zstate_init },
 	{ "ipf_zstate_block", ipf_zstate_block, ipf_zstate_init },
 	{ "", NULL }
@@ -2589,13 +2590,11 @@ ipf_stack_t *ifs;
 		(void) fr_dolog(fin, &pass);
 	}
 #endif
-	if ((pass & FR_BLOCK) != 0 && ifs->ifs_gz_controlled) {
-		extern void ipf_block_cfwlog(frentry_t *, fr_info_t *,
-		    ipf_stack_t *);
-		/*
-		 * XXX KEBE SAYS also check for whatever we really NEED to do
-		 */
-		ipf_block_cfwlog(fr, fin, ifs);
+
+	if (ifs->ifs_zstate_enabled == IPF_ZSTATE_STATE && FR_ISBLOCK(pass)) {
+		/* XXX KEBE SAYS USE-STATE */
+		ASSERT(ifs->ifs_gz_controlled);
+		ipf_block_zstatelog(fr, fin, ifs);
 	}
 
 	/*

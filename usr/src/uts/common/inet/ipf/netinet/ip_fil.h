@@ -1560,9 +1560,22 @@ extern	int	ipllog __P((int, fr_info_t *, void **, size_t *, int *, int,
 extern	void	fr_logunload __P((ipf_stack_t *));
 
 /* SmartOS single-FD global-zone state accumulator */
+typedef enum {
+	IPF_ZSTATE_NONE = 0,
+	IPF_ZSTATE_CALL,
+	IPF_ZSTATE_STATE
+} ipf_zstate_enabled_t;
+extern ipf_zstate_enabled_t ipf_zstate_enabled;
+/* XXX KEBE SAYS these four are USE-CALL entry points. */
 extern int ipf_zstate_init __P((frentry_t *, ipf_stack_t *));
 extern frentry_t *ipf_zstate_pass __P((fr_info_t *, uint32_t *));
 extern frentry_t *ipf_zstate_block __P((fr_info_t *, uint32_t *));
+extern void ipf_zstate_clear __P((ipf_stack_t *));
+/* XXX KEBE SAYS these two are USE-STATE entry points. */
+struct ipstate;	/* Ugggh. */
+extern void ipf_log_zstatelog __P((struct ipstate *, uint_t, ipf_stack_t *));
+extern void ipf_block_zstatelog __P((frentry_t *, fr_info_t *, ipf_stack_t *));
+
 
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));
 extern	int		fr_copytolog __P((int, char *, int));
