@@ -149,8 +149,10 @@ struct file;
 #endif
 /* END OF INCLUDES */
 
-/* Because ipf compiles this kernel file in userland testing... */
+/* Extra includes outside normal ipf things. */
 #include <sys/types.h>
+#include <inet/ip6.h>
+/* Because ipf compiles this kernel file in userland testing... */
 #ifndef ASSERT3U
 #define	ASSERT3U(a, b, c) ASSERT(a ## b ## c);
 #endif	/* ASSERT3U */
@@ -262,8 +264,14 @@ ipf_block_zstatelog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	event.cfwev_sport = fin->fin_sport;
 	event.cfwev_dport = fin->fin_dport;
 
-	memcpy(&event.cfwev_saddr, &fin->fin_src6, sizeof (in6_addr_t));
-	memcpy(&event.cfwev_daddr, &fin->fin_dst6, sizeof (in6_addr_t));
+	if (fin->fin_v == IPV4_VERSION) {
+		IN6_INADDR_TO_V4MAPPED(&fin->fin_src, &event.cfwev_saddr);
+		IN6_INADDR_TO_V4MAPPED(&fin->fin_dst, &event.cfwev_daddr);
+	} else {
+		ASSERT3U(fin->fin_v, ==, IPV6_VERSION);
+		event.cfwev_saddr = fin->fin_src6.in6;
+		event.cfwev_daddr = fin->fin_dst6.in6;
+	}
 
 	/*
 	 * XXX KEBE ASKS -> something better instead?!?
@@ -329,8 +337,14 @@ ipf_log_zstatelog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 		break;
 	}
 
-	memcpy(&event.cfwev_saddr, &is->is_src, sizeof (in6_addr_t));
-	memcpy(&event.cfwev_daddr, &is->is_dst, sizeof (in6_addr_t));
+	if (is->is_v == IPV4_VERSION) {
+		IN6_INADDR_TO_V4MAPPED(&is->is_src.in4, &event.cfwev_saddr);
+		IN6_INADDR_TO_V4MAPPED(&is->is_dst.in4, &event.cfwev_daddr);
+	} else {
+		ASSERT3U(is->is_v, ==, IPV6_VERSION);
+		event.cfwev_saddr = is->is_src.in6;
+		event.cfwev_daddr = is->is_dst.in6;
+	}
 
 	/*
 	 * XXX KEBE ASKS -> something better instead?!?
