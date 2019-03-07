@@ -135,7 +135,7 @@ static int		efi_read(int, struct dk_gpt *);
 /*
  * In normal operation, libefi just passes everything down to the kernel driver
  * (and - usually - cmlb), as that code needs to react to any partitioning
- * changes by changing devices nodes under /dev/?dsk/ and the like.
+ * changes by changing device nodes under /dev/?dsk/ and the like.
  *
  * However, if we are running against an un-labeled lofi device on an older
  * version of illumos, these ioctl()s aren't emulated.  This can be a problem if

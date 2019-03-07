@@ -1471,13 +1471,13 @@ dboot_add_memlist(uint64_t start, uint64_t end)
 		max_mem = end;
 
 	/*
-	 * Well, this is sad.  One some systems, there is a region of memory
-	 * that can be corrupted until some number of seconds after we have
-	 * booted.  And the BIOS doesn't tell us that this memory is unsafe to
-	 * use.  And we don't know how long it's dangerous.  So we'll chop out
-	 * this range from any memory list that would otherwise be usable.  Note
-	 * that any system of this type will give us the new-style (0x40)
-	 * memlist, so we need not fix up the other path below.
+	 * Well, this is sad.  On some systems, there is a region of memory that
+	 * can be corrupted until some number of seconds after we have booted.
+	 * And the BIOS doesn't tell us that this memory is unsafe to use.  And
+	 * we don't know how long it's dangerous.  So we'll chop out this range
+	 * from any memory list that would otherwise be usable.  Note that any
+	 * system of this type will give us the new-style (0x40) memlist, so we
+	 * need not fix up the other path below.
 	 *
 	 * However, if we're boot-loaded from something that doesn't have a
 	 * RICHMOND-16 workaround (which on many systems is just fine), it could

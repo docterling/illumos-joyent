@@ -51,7 +51,7 @@ extern "C" {
 /*
  * Although the EFI spec is clear that sizeof (efi_gpt_t) is a valid value
  * (512), at least one EFI system (AMI v4.6.4.1) incorrectly expects this to be
- * exactly the size of the structure defiend in the spec, that is, 92.
+ * exactly the size of the structure defined in the spec, that is, 92.
  *
  * As the reserved section is never used, the modified value works fine
  * everywhere else.
