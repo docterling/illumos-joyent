@@ -193,8 +193,8 @@ ipf_zstate_enabled_t ipf_zstate_enabled;
 #define	CFWDIR_OUT	2
 typedef struct cfwev_s {
 	uint16_t cfwev_type;	/* BEGIN, END, BLOCK */
-	uint8_t cfwev_protocol;	/* IPPROTO_* */
 	uint8_t cfwev_direction;
+	uint8_t cfwev_protocol;	/* IPPROTO_* */
 	/*
 	 * The above "direction" informs if src/dst are local/remote or
 	 * remote/local.
@@ -364,25 +364,285 @@ ipf_log_zstatelog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
  * XXX KEBE SAYS EVERYTHING BELOW THIS COMMENT IS USE-CALL EXCLUSIVE!
  */
 
+/*
+ * XXX KEBE ASKS MOVE THIS TO A HEADER FILE?
+ */
+
+typedef struct ipf_zstate_bucket_s {
+	kmutex_t ipfzsb_lock;
+	avl_tree_t ipfzsb_tree;
+} ipf_zstate_bucket_t;
+
+/*
+ * zstate flows: distinct address layouts for IPv4 vs. IPv6 because you can do
+ * IPv4 5-tuple comparisons with two uint64_t compares, vs. five of them for
+ * IPv6.
+ */
+typedef struct ipf_zflow_s {
+	/* Linkage */
+	avl_node_t ipfzfl_node;
+	ipf_zstate_bucket_t *ipfzfl_bucket;
+
+	/* Search key. */
+	union {
+		struct {
+			in_addr_t as_laddr;
+			in_addr_t as_faddr;
+		} au_addrs4;
+		struct {
+			in6_addr_t as_laddr;
+			in6_addr_t as_faddr;
+		} au_addrs6;
+		uint64_t au_all[4];
+	} ipfzfl_addrsu;
+
+	union {
+		uint64_t ppu_all;
+		struct {
+			uint16_t ppue_lport;
+			uint16_t ppue_dport;
+			uint8_t ppue_protocol;
+			uint_t ppue_mbz[3];
+		} ppu_elements;
+	} ipfzfl_portprotocolu;
+
+	/* Other state... */
+	hrtime_t ipfzfl_expiry;
+	uint8_t ipfzfl_direction;
+	uint8_t ipfzfl_tcphandshake;
+	uint32_t ipfzfl_refcnt;
+	uint32_t ipfzfl_ruleid;
+} ipf_zflow_t;
+#define	ipfzfl_addrs4 ipfzfl_addrsu.au_all[0]
+#define	ipfzfl_laddr4 ipfzfl_addrsu.au_addrs4.as_laddr
+#define	ipfzfl_faddr4 ipfzfl_addrsu.au_addrs4.as_faddr
+#define	ipfzfl_addrs6 ipfzfl_addrsu.au_all
+#define	ipfzfl_laddr6 ipfzfl_addrsu.au_addrs6.as_laddr
+#define	ipfzfl_faddr6 ipfzfl_addrsu.au_addrs6.as_faddr
+#define	ipfzfl_portprotocol ipfzfl_portprotocolu.ppu_all
+#define	ipfzfl_lport ipfzfl_portprotocolu.ppu_elements.ppue_lport
+#define	ipfzfl_fport ipfzfl_portprotocolu.ppu_elements.ppue_fport
+#define	ipfzfl_protocol ipfzfl_portprotocolu.ppu_elements.ppue_protocol
+#define	ipfzfl_mbz ipfzfl_portprotocolu.ppu_elements.ppue_mbz
+
+static void
+ipf_zflow_refhold(ipf_zflow_t *ipfzfl)
+{
+	atomic_inc_32(&ipfzfl->ipfzfl_refcnt);
+	ASSERT(ipfzfl->ipfzfl_refcnt != 0);
+}
+
+static void
+ipf_zflow_refrele(ipf_zflow_t *ipfzfl)
+{
+	ASSERT(ipfzfl->ipfzfl_refcnt != 0);
+	membar_exit();
+	if (atomic_dec_32_nv(&ipfzfl->ipfzfl_refcnt) == 0)
+		kmem_free(ipfzfl, sizeof (*ipfzfl));
+}
+
+/*
+ * For now, xor all the bytes into a uint8_t. This May Change.
+ * The stock ipf state tracking does 5000-6000 linked-list buckets.
+ * We're doing 256 AVL trees.
+ */
+static inline uint8_t
+zstate_hash(uint32_t *laddr, uint32_t *faddr, uint16_t lport, uint16_t rport,
+    uint8_t protocol, uint8_t version)
+{
+	uint8_t results = protocol;
+	uint32_t acc32 =
+	    *laddr ^ *faddr ^ ((uint32_t)lport) ^ ((uint32_t)rport);
+
+	if (version == IPV6_VERSION) {
+		acc32 ^= laddr[1];
+		acc32 ^= laddr[2];
+		acc32 ^= laddr[3];
+		acc32 ^= faddr[1];
+		acc32 ^= faddr[2];
+		acc32 ^= faddr[3];
+	}
+
+	results ^= (acc32 >> 24) ^ (acc32 >> 16) ^ (acc32 >> 8) ^ acc32;
+
+	return (results);
+}
+
+#define IPFZS_BUCKETS 256
+
+/* Allocated and assigned to the ifs_zstate_trackers. */
+typedef struct ipf_zstate_s {
+	ipf_zstate_bucket_t ipfzs_v4[IPFZS_BUCKETS];
+	ipf_zstate_bucket_t ipfzs_v6[IPFZS_BUCKETS];
+	/* XXX KEBE ASKS kmem_cache? */
+} ipf_zstate_t;
+
 void
 ipf_zstate_clear(ipf_stack_t *ifs)
 {
+	int i;
+	ipf_zstate_t *zstate = (ipf_zstate_t *)ifs->ifs_zstate_trackers;
+
 	if (ifs->ifs_zstate_trackers == NULL)
 		return;
 
+	ifs->ifs_zstate_trackers = NULL;
+
 	/* XXX KEBE SAYS FILL ME IN! */
 	ASSERT3U(ifs->ifs_zstate_enabled, ==, IPF_ZSTATE_CALL);
+
+	for (i = 0; i < IPFZS_BUCKETS; i++) {
+		ipf_zflow_t *ipfzfl;
+		void *cookie;
+		avl_tree_t *tree;
+
+		/* XXX KEBE ASKS - Assume we're good and don't need locking? */
+		mutex_destroy(&zstate->ipfzs_v4[i].ipfzsb_lock);
+		cookie = NULL;
+		tree = &zstate->ipfzs_v4[i].ipfzsb_tree;
+		while ((ipfzfl = avl_destroy_nodes(tree, &cookie)) != NULL)
+			ipf_zflow_refrele(ipfzfl);
+		mutex_destroy(&zstate->ipfzs_v6[i].ipfzsb_lock);
+		cookie = NULL;
+		tree = &zstate->ipfzs_v6[i].ipfzsb_tree;
+		while ((ipfzfl = avl_destroy_nodes(tree, &cookie)) != NULL)
+			ipf_zflow_refrele(ipfzfl);
+	}
+
+	kmem_free(zstate, sizeof (*zstate));
+}
+
+static int
+ipf_zstate_v4cmp(const void *l, const void *r)
+{
+	ipf_zflow_t *lflow, *rflow;
+	uint64_t lportproto, rportproto, laddrs, raddrs;
+
+	lflow = (ipf_zflow_t *)l;
+	rflow = (ipf_zflow_t *)r;
+
+#if 1
+	/* Compare by protocol & port first. */
+	lportproto = lflow->ipfzfl_portprotocol;
+	rportproto = rflow->ipfzfl_portprotocol;
+	if (lportproto > rportproto)
+		return (1);
+	if (lportproto < rportproto)
+		return (-1);
+
+	laddrs = lflow->ipfzfl_addrs4;
+	raddrs = rflow->ipfzfl_addrs4;
+	if (laddrs > raddrs)
+		return (1);
+	if (laddrs < raddrs)
+		return (-1);
+	return (0);
+#else
+	/* Compare by addresses first. */
+	laddrs = lflow->ipfzfl_addrs4;
+	raddrs = rflow->ipfzfl_addrs4;
+	if (laddrs > raddrs)
+		return (1);
+	if (laddrs < raddrs)
+		return (-1);
+
+	lportproto = lflow->ipfzfl_portprotocol;
+	rportproto = rflow->ipfzfl_portprotocol;
+	if (rportproto > rportproto)
+		return (1);
+	if (laddrs < raddrs)
+		return (-1);
+	return (0);
+#endif
+}
+
+static int
+ipf_zstate_v6cmp(const void *l, const void *r)
+{
+	ipf_zflow_t *lflow, *rflow;
+	uint64_t lportproto, rportproto, *laddrs, *raddrs;
+
+	lflow = (ipf_zflow_t *)l;
+	rflow = (ipf_zflow_t *)r;
+
+	/*
+	 * For IPv6 address comparison, we don't need to SORT as much as
+	 * DIFFERENTIATE.  To that end, compare the LOW 64-bits first, as
+	 * they are far more likely to be different.  Our goal is to get
+	 * out of this function as quickly as possible.
+	 */
+
+#if 1
+	/* Compare by protocol & port first. */
+	lportproto = lflow->ipfzfl_portprotocol;
+	rportproto = rflow->ipfzfl_portprotocol;
+	if (lportproto > rportproto)
+		return (1);
+	if (lportproto < rportproto)
+		return (-1);
+	
+	laddrs = lflow->ipfzfl_addrs6;
+	raddrs = rflow->ipfzfl_addrs6;
+	if (laddrs[1] > raddrs[1])
+		return (1);
+	if (laddrs[1] < raddrs[1])
+		return (-1);
+	/* As of here, we know [lr]addrs[1] are equal. */
+	if (laddrs[0] > raddrs[0])
+		return (1);
+	if (laddrs[0] < raddrs[0])
+		return (-1);
+	return (0);
+#else
+	/* Compare by addresses first. */
+	laddrs = lflow->ipfzfl_addrs4;
+	raddrs = rflow->ipfzfl_addrs4;
+	if (laddrs[1] > raddrs[1])
+		return (1);
+	if (laddrs[1] < raddrs[1])
+		return (-1);
+	/* As of here, we know [lr]addrs[1] are equal. */
+	if (laddrs[0] > raddrs[0])
+		return (1);
+	if (laddrs[0] < raddrs[0])
+		return (-1);
+
+	lportproto = lflow->ipfzfl_portprotocol;
+	rportproto = rflow->ipfzfl_portprotocol;
+	if (rportproto > rportproto)
+		return (1);
+	if (laddrs < raddrs)
+		return (-1);
+	return (0);
+#endif
 }
 
 int
 ipf_zstate_init(frentry_t *fr, ipf_stack_t *ifs)
 {
+	int i;
+	ipf_zstate_t *zstate;
+
 	if (ifs->ifs_zstate_trackers != NULL ||
 	    ifs->ifs_zstate_enabled != IPF_ZSTATE_CALL) {
 		return (0);
 	}
-	
-	/* XXX KEBE SAYS FILL ME IN! */
+
+	zstate = kmem_alloc(sizeof (*zstate), KM_SLEEP);
+	for (i = 0; i < IPFZS_BUCKETS; i++) {
+		mutex_init(&(zstate->ipfzs_v4[i].ipfzsb_lock), NULL,
+		    MUTEX_DEFAULT, NULL);
+		avl_create(&(zstate->ipfzs_v4[i].ipfzsb_tree),
+		    ipf_zstate_v4cmp, sizeof (ipf_zflow_t),
+		    offsetof(ipf_zflow_t, ipfzfl_node));
+		mutex_init(&(zstate->ipfzs_v6[i].ipfzsb_lock), NULL,
+		    MUTEX_DEFAULT, NULL);
+		avl_create(&(zstate->ipfzs_v6[i].ipfzsb_tree),
+		    ipf_zstate_v6cmp, sizeof (ipf_zflow_t),
+		    offsetof(ipf_zflow_t, ipfzfl_node));
+	}
+
+	ifs->ifs_zstate_trackers = zstate;
 
 	return (0);
 }
@@ -392,6 +652,9 @@ ipf_zstate_pass(fr_info_t *fin, uint32_t *passp)
 {
 
 	ASSERT3U(fin->fin_ifs->ifs_zstate_enabled, ==, IPF_ZSTATE_CALL);
+
+	/* XXX KEBE SAYS FILL ME IN! See ~/notes.. */
+	
 
 	/*
 	 * You need to scribble into *passp what all pass flags need to be
@@ -411,13 +674,10 @@ ipf_zstate_block(fr_info_t *fin, uint32_t *passp)
 	ASSERT(ifs != NULL);
 	ASSERT(fr != NULL);
 	ASSERT3U(ifs->ifs_zstate_enabled, ==, IPF_ZSTATE_CALL);
+	ASSERT(ifs->ifs_gz_controlled);
 
-	if (ifs->ifs_gz_controlled) {
-		/*
-		 * XXX KEBE SAYS also check for whatever we really NEED to do
-		 */
-		ipf_block_zstatelog(fr, fin, ifs);
-	}
+	/* Block is a no-brainer, just log it! */
+	ipf_block_zstatelog(fr, fin, ifs);
 
 	/*
 	 * You need to scribble into *passp what all block flags need to be

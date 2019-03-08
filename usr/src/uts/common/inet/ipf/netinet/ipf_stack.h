@@ -322,7 +322,6 @@ struct ipf_stack {
 	ipf_zstate_enabled_t	ifs_zstate_enabled;
 	/* XXX KEBE SAYS USE-CALL */
 	void			*ifs_zstate_trackers;
-	uint_t			ifs_zstate_trackers_size;
 
 #ifdef KERNEL
 	/* kstats for inbound and outbound */
