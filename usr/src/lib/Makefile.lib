@@ -229,7 +229,7 @@ objs/%.o pics/%.o: %.c
 
 objs/%.o pics/%.o: %.cc
 	$(COMPILE.cc) -o $@ $<
-	$(POST_PROCESS_O)
+	$(POST_PROCESS_CC_O)
 
 .PRECIOUS: $(LIBS)
 

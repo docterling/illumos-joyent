@@ -28,7 +28,7 @@
  */
 
 /*
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*
@@ -2705,6 +2705,7 @@ ctf_dwarf_count_dies(Dwarf_Debug dw, Dwarf_Error *derr, int *ndies,
 
 	while ((ret = dwarf_next_cu_header(dw, NULL, &vers, NULL, NULL,
 	    &nexthdr, derr)) != DW_DLV_NO_ENTRY) {
+		// FIXME: here? When do we get this?
 		if (ret != DW_DLV_OK) {
 			(void) snprintf(errbuf, errlen,
 			    "file does not contain valid DWARF data: %s\n",
@@ -2724,6 +2725,7 @@ ctf_dwarf_count_dies(Dwarf_Debug dw, Dwarf_Error *derr, int *ndies,
 		(void) snprintf(errbuf, errlen,
 		    "file does not contain valid DWARF data: %s\n",
 		    dwarf_errmsg(*derr));
+		// FIXME: NODEBUG?
 		return (ECTF_CONVBKERR);
 	}
 
@@ -2753,6 +2755,7 @@ ctf_dwarf_init_die(int fd, Elf *elf, ctf_cu_t *cup, int ndie, char *errbuf,
 			continue;
 		}
 
+		// FIXME: test empty file behaviour
 		/*
 		 * Compilers are apparently inconsistent. Some emit no DWARF for
 		 * empty files and others emit empty compilation unit.
@@ -2791,7 +2794,8 @@ ctf_dwarf_init_die(int fd, Elf *elf, ctf_cu_t *cup, int ndie, char *errbuf,
 			    "file does not contain DWARF data\n");
 			avl_destroy(&cup->cu_map);
 			ctf_free(cup, sizeof (ctf_cu_t));
-			return (ECTF_CONVBKERR);
+		/// FIXME???
+			return (ECTF_CONVNODEBUG);
 		}
 
 		if ((ret = ctf_dwarf_child(cup, cu, &child)) != 0) {
@@ -2804,7 +2808,7 @@ ctf_dwarf_init_die(int fd, Elf *elf, ctf_cu_t *cup, int ndie, char *errbuf,
 			    "file does not contain DWARF data\n");
 			avl_destroy(&cup->cu_map);
 			ctf_free(cup, sizeof (ctf_cu_t));
-			return (ECTF_CONVBKERR);
+			return (ECTF_CONVNODEBUG);
 		}
 
 		cup->cu_cuoff = offset;
@@ -2829,8 +2833,8 @@ ctf_dwarf_init_die(int fd, Elf *elf, ctf_cu_t *cup, int ndie, char *errbuf,
 }
 
 
-ctf_conv_status_t
-ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
+int
+ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, ctf_file_t **fpp,
     char *errmsg, size_t errlen)
 {
 	int err, ret, ndies, i;
@@ -2839,30 +2843,17 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 	ctf_cu_t *cdies = NULL, *cup;
 	workq_t *wqp = NULL;
 
-	if (errp == NULL)
-		errp = &err;
-	*errp = 0;
 	*fpp = NULL;
 
 	ret = dwarf_elf_init(elf, DW_DLC_READ, NULL, NULL, &dw, &derr);
 	if (ret != DW_DLV_OK) {
-		/*
-		 * We may want to expect DWARF data here and fail conversion if
-		 * it's missing. In this case, if we actually have some amount
-		 * of DWARF, but no section, for now, just go ahead and create
-		 * an empty CTF file.
-		 */
 		if (ret == DW_DLV_NO_ENTRY ||
-		    dwarf_errno(derr) == DW_DLE_DEBUG_INFO_NULL) {
-			*fpp = ctf_create(errp);
-			return (*fpp != NULL ? CTF_CONV_SUCCESS :
-			    CTF_CONV_ERROR);
-		}
+		    dwarf_errno(derr) == DW_DLE_DEBUG_INFO_NULL)
+			return (ECTF_CONVNODEBUG);
+
 		(void) snprintf(errmsg, errlen,
-		    "failed to initialize DWARF: %s\n",
-		    dwarf_errmsg(derr));
-		*errp = ECTF_CONVBKERR;
-		return (CTF_CONV_ERROR);
+		    "dwarf_elf_init() failed: %s\n", dwarf_errmsg(derr));
+		return (ECTF_CONVBKERR);
 	}
 
 	/*
@@ -2873,18 +2864,17 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 	 * only a single Dwarf_Debug as well.
 	 */
 	ndies = 0;
-	ret = ctf_dwarf_count_dies(dw, &derr, &ndies, errmsg, errlen);
-	if (ret != 0) {
-		*errp = ret;
+	err = ctf_dwarf_count_dies(dw, &derr, &ndies, errmsg, errlen);
+	if (err != 0)
 		goto out;
-	}
 
 	(void) dwarf_finish(dw, &derr);
 	cdies = ctf_alloc(sizeof (ctf_cu_t) * ndies);
 	if (cdies == NULL) {
-		*errp = ENOMEM;
-		return (CTF_CONV_ERROR);
+		return (ENOMEM);
 	}
+
+	bzero(cdies, sizeof (ctf_cu_t) * ndies);
 
 	for (i = 0; i < ndies; i++) {
 		cup = &cdies[i];
@@ -2895,19 +2885,20 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 			(void) snprintf(errmsg, errlen,
 			    "failed to initialize DWARF: %s\n",
 			    dwarf_errmsg(derr));
-			*errp = ECTF_CONVBKERR;
-			return (CTF_CONV_ERROR);
+			return (ECTF_CONVBKERR);
 		}
 
-		ret = ctf_dwarf_init_die(fd, elf, &cdies[i], i, errmsg, errlen);
-		if (ret != 0) {
-			*errp = ret;
+		err = ctf_dwarf_init_die(fd, elf, &cdies[i], i, errmsg, errlen);
+		if (err != 0)
 			goto out;
-		}
+		// FIXME: fix count_Dies for partial failures?
 		cup->cu_doweaks = ndies > 1 ? B_FALSE : B_TRUE;
 	}
 
 	ctf_dprintf("found %d DWARF die(s)\n", ndies);
+
+	// FIXME: here we should look for all C files (STT_FILES), and complain
+	// if we don't find a matching cu_name?
 
 	/*
 	 * If we only have one compilation unit, there's no reason to use
@@ -2918,7 +2909,7 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 		nthrs = 1;
 
 	if (workq_init(&wqp, nthrs) == -1) {
-		*errp = errno;
+		err = errno;
 		goto out;
 	}
 
@@ -2927,18 +2918,18 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 		ctf_dprintf("adding die %s: %p, %x %x\n", cup->cu_name,
 		    cup->cu_cu, cup->cu_cuoff, cup->cu_maxoff);
 		if (workq_add(wqp, cup) == -1) {
-			*errp = errno;
+			err = errno;
 			goto out;
 		}
 	}
 
-	ret = workq_work(wqp, ctf_dwarf_convert_one, NULL, errp);
+	ret = workq_work(wqp, ctf_dwarf_convert_one, NULL, &err);
 	if (ret == WORKQ_ERROR) {
-		*errp = errno;
+		err = errno;
 		goto out;
 	} else if (ret == WORKQ_UERROR) {
 		ctf_dprintf("internal convert failed: %s\n",
-		    ctf_errmsg(*errp));
+		    ctf_errmsg(err));
 		goto out;
 	}
 
@@ -2946,43 +2937,38 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 	if (ndies != 1) {
 		ctf_merge_t *cmp;
 
-		cmp = ctf_merge_init(fd, &ret);
-		if (cmp == NULL) {
-			*errp = ret;
+		cmp = ctf_merge_init(fd, &err);
+		if (cmp == NULL)
 			goto out;
-		}
 
 		ctf_dprintf("setting threads\n");
-		if ((ret = ctf_merge_set_nthreads(cmp, nthrs)) != 0) {
+		if ((err = ctf_merge_set_nthreads(cmp, nthrs)) != 0) {
 			ctf_merge_fini(cmp);
-			*errp = ret;
 			goto out;
 		}
 
 		ctf_dprintf("adding dies\n");
 		for (i = 0; i < ndies; i++) {
 			cup = &cdies[i];
-			if ((ret = ctf_merge_add(cmp, cup->cu_ctfp)) != 0) {
+			if ((err = ctf_merge_add(cmp, cup->cu_ctfp)) != 0) {
 				ctf_merge_fini(cmp);
-				*errp = ret;
 				goto out;
 			}
 		}
 
 		ctf_dprintf("performing merge\n");
-		ret = ctf_merge_merge(cmp, fpp);
-		if (ret != 0) {
+		err = ctf_merge_merge(cmp, fpp);
+		if (err != 0) {
 			ctf_dprintf("failed merge!\n");
 			*fpp = NULL;
 			ctf_merge_fini(cmp);
-			*errp = ret;
 			goto out;
 		}
 		ctf_merge_fini(cmp);
-		*errp = 0;
+		ret = 0;
 		ctf_dprintf("successfully converted!\n");
 	} else {
-		*errp = 0;
+		ret = 0;
 		*fpp = cdies->cu_ctfp;
 		cdies->cu_ctfp = NULL;
 		ctf_dprintf("successfully converted!\n");
@@ -2991,5 +2977,5 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 out:
 	workq_fini(wqp);
 	ctf_dwarf_free_dies(cdies, ndies);
-	return (*fpp != NULL ? CTF_CONV_SUCCESS : CTF_CONV_ERROR);
+	return (ret);
 }

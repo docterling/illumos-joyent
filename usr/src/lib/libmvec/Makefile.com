@@ -12,6 +12,8 @@
 #
 # Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
 #
+# Copyright (c) 2019, Joyent, Inc.
+#
 
 LIBMDIR		= $(SRC)/lib/libm
 
@@ -274,8 +276,8 @@ lint:	lintcheck
 
 pics/%.o: ../$(TARGET_ARCH)/src/%.S
 	$(COMPILE.s) -o $@ $<
-	$(POST_PROCESS_O)
+	$(POST_PROCESS_S_O)
 
 pics/%.o: ../common/$$(CHIP)/%.S
 	$(COMPILE.s) -o $@ $<
-	$(POST_PROCESS_O)
+	$(POST_PROCESS_S_O)

@@ -21,7 +21,7 @@
 #
 # Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
 #
-# Copyright (c) 2018, Joyent, Inc.
+# Copyright (c) 2019, Joyent, Inc.
 
 LIBRARY = libcpc.a
 VERS	= .1
@@ -66,4 +66,4 @@ pics/%.o: ../$(MACH)/%.c
 
 pics/%.o: ../$(MACH)/%.s
 	$(COMPILE.s) -o $@ $<
-	$(POST_PROCESS_O)
+	$(POST_PROCESS_S_O)

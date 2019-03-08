@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2015, Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 
 /*
@@ -334,17 +334,20 @@ main(int argc, char *argv[])
 	    sizeof (buf));
 	if (ofp == NULL) {
 		/*
-		 * -i says that we shouldn't concern ourselves with source files
-		 * that weren't built from C source code in part. Because this
-		 * has been traditionally used across all of illumos, we still
-		 * honor it.
+		 * If we get ECTF_CONVNOCSRC, it means that our input file was
+		 * not built even in part from a C source file. In general, it
+		 * makes no sense for us to run ctfconvert on such an input:
+		 * however, the traditional -i option makes this silently
+		 * "succeed".
 		 */
-		if ((flags & CTF_CONVERT_F_IGNNONC) != 0 &&
-		    err == ECTF_CONVNOCSRC) {
+		if (err == ECTF_CONVNOCSRC &&
+		    (flags & CTF_CONVERT_F_IGNNONC) != 0) {
 			exit(CTFCONVERT_OK);
 		}
+
 		if (keep == B_FALSE)
 			(void) unlink(infile);
+
 		ctfconvert_fatal("CTF conversion failed: %s\n",
 		    err == ECTF_CONVBKERR ? buf : ctf_errmsg(err));
 	}

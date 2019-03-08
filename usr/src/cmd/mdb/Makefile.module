@@ -23,7 +23,7 @@
 # Use is subject to license terms.
 #
 # Copyright (c) 2013 by Delphix. All rights reserved.
-# Copyright (c) 2018, Joyent, Inc.
+# Copyright (c) 2019, Joyent, Inc.
 #
 
 .KEEP_STATE:
@@ -238,7 +238,6 @@ dmod/%.o kmod/%.o: %.c
 
 dmod/%.o kmod%.o: %.s
 	$(COMPILE.s) -o $@ $<
-	$(CTFCONVERT_O)
 
 dmod/%.o kmod/%.o: ../%.c
 	$(COMPILE.c) -o $@ $<
@@ -246,7 +245,6 @@ dmod/%.o kmod/%.o: ../%.c
 
 dmod/%.o kmod%.o: ../%.s
 	$(COMPILE.s) -o $@ $<
-	$(CTFCONVERT_O)
 
 dmod/%.o kmod/%.o: ../../../common/modules/$(MODNAME)/%.c
 	$(COMPILE.c) -o $@ $<
@@ -254,7 +252,6 @@ dmod/%.o kmod/%.o: ../../../common/modules/$(MODNAME)/%.c
 
 dmod/%.o kmod%.o: ../../../common/modules/$(MODNAME)/%.s
 	$(COMPILE.s) -o $@ $<
-	$(CTFCONVERT_O)
 
 dmod/%.o kmod/%.o: $$(MODSRCS_DIR)/%.c
 	$(COMPILE.c) -o $@ $<
@@ -262,7 +259,6 @@ dmod/%.o kmod/%.o: $$(MODSRCS_DIR)/%.c
 
 dmod/%.o kmod%.o: $$(MODSRCS_DIR)/%.s
 	$(COMPILE.s) -o $@ $<
-	$(CTFCONVERT_O)
 
 #
 # Lint

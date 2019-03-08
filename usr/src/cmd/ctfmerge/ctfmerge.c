@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2017, Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 
 /*
@@ -38,8 +38,8 @@
 static char *g_progname;
 static char *g_unique;
 static char *g_outfile;
-static boolean_t g_req;
 static uint_t g_nctf;
+static boolean_t ctf_required = B_TRUE;
 
 #define	CTFMERGE_OK	0
 #define	CTFMERGE_FATAL	1
@@ -64,62 +64,29 @@ ctfmerge_fatal(const char *fmt, ...)
 	exit(CTFMERGE_FATAL);
 }
 
+/*
+ * We failed to find CTF for this file, check if it's OK...
+ */
 static boolean_t
-ctfmerge_expect_ctf(const char *name, Elf *elf)
+ctfmerge_check_for_c(const char *name, Elf *elf)
 {
-	Elf_Scn *scn, *strscn;
-	Elf_Data *data, *strdata;
-	GElf_Shdr shdr;
-	ulong_t i;
+	char errmsg[1024];
 
-	if (g_req == B_FALSE)
-		return (B_FALSE);
+	switch (ctf_has_c_source(elf, errmsg, sizeof (errmsg))) {
+	case -1:
+		ctfmerge_fatal("failed to open %s: %s\n", name, errmsg);
+		break;
 
-	scn = NULL;
-	while ((scn = elf_nextscn(elf, scn)) != NULL) {
-		if (gelf_getshdr(scn, &shdr) == NULL) {
-			ctfmerge_fatal("failed to get section header for file "
-			    "%s: %s\n", name, elf_errmsg(elf_errno()));
-		}
+	case 0:
+		/* Not a C-derived object: it's fine.  */
+		return (B_TRUE);
 
-		if (shdr.sh_type == SHT_SYMTAB)
-			break;
-	}
-
-	if (scn == NULL)
-		return (B_FALSE);
-
-	if ((strscn = elf_getscn(elf, shdr.sh_link)) == NULL)
-		ctfmerge_fatal("failed to get section header for file %s: %s\n",
-		    name, elf_errmsg(elf_errno()));
-
-	if ((data = elf_getdata(scn, NULL)) == NULL)
-		ctfmerge_fatal("failed to read symbol table for %s: %s\n",
-		    name, elf_errmsg(elf_errno()));
-
-	if ((strdata = elf_getdata(strscn, NULL)) == NULL)
-		ctfmerge_fatal("failed to read string table for %s: %s\n",
-		    name, elf_errmsg(elf_errno()));
-
-	for (i = 0; i < shdr.sh_size / shdr.sh_entsize; i++) {
-		GElf_Sym sym;
-		const char *file;
-		size_t len;
-
-		if (gelf_getsym(data, i, &sym) == NULL)
-			ctfmerge_fatal("failed to read symbol table entry %lu "
-			    "for %s: %s\n", i, name, elf_errmsg(elf_errno()));
-
-		if (GELF_ST_TYPE(sym.st_info) != STT_FILE)
-			continue;
-
-		file = (const char *)((uintptr_t)strdata->d_buf + sym.st_name);
-		len = strlen(file);
-		if (len < 2 || name[len - 2] != '.')
-			continue;
-
-		if (name[len - 1] == 'c')
-			return (B_TRUE);
+	default:
+		if (!ctf_required)
+			return (B_FALSE);
+		ctfmerge_fatal("failed to open %s: %s\n", name,
+		    ctf_errmsg(ECTF_NOCTFDATA));
+		break;
 	}
 
 	return (B_FALSE);
@@ -213,31 +180,27 @@ ctfmerge_elfopen(const char *name, Elf *elf, ctf_merge_t *cmh)
 		}
 	}
 
-	if (ctfsect.cts_type == SHT_NULL) {
-		if (ctfmerge_expect_ctf(name, elf) == B_FALSE)
-			return;
-		ctfmerge_fatal("failed to open %s: %s\n", name,
-		    ctf_errmsg(ECTF_NOCTFDATA));
-	}
+	if (ctfsect.cts_type == SHT_NULL && !ctfmerge_check_for_c(name, elf))
+		return;
 
 	if (symsect.cts_type != SHT_NULL && strsect.cts_type != SHT_NULL) {
 		fp = ctf_bufopen(&ctfsect, &symsect, &strsect, &err);
 	} else {
+		// FIXME: what case is this
 		fp = ctf_bufopen(&ctfsect, NULL, NULL, &err);
 	}
 
 	if (fp == NULL) {
-		if (ctfmerge_expect_ctf(name, elf) == B_TRUE) {
-			ctfmerge_fatal("failed to open file %s: %s\n",
-			    name, ctf_errmsg(err));
-		}
-	} else {
-		if ((err = ctf_merge_add(cmh, fp)) != 0) {
-			ctfmerge_fatal("failed to add input %s: %s\n",
-			    name, ctf_errmsg(err));
-		}
-		g_nctf++;
+		// FIXME?? this did expect_ctf before?
+		ctfmerge_fatal("failed to open file %s: %s\n",
+		    name, ctf_errmsg(err));
 	}
+
+	if ((err = ctf_merge_add(cmh, fp)) != 0) {
+		ctfmerge_fatal("failed to add input %s: %s\n",
+		    name, ctf_errmsg(err));
+	}
+	g_nctf++;
 }
 
 static void
@@ -273,6 +236,7 @@ ctfmerge_read_archive(const char *name, int fd, Elf *elf,
 		case ELF_K_ELF:
 			ctfmerge_elfopen(nname, aelf, cmh);
 			free(nname);
+			// FIXME
 			leakelf = B_TRUE;
 			break;
 		default:
@@ -300,15 +264,16 @@ ctfmerge_usage(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	(void) fprintf(stderr, "Usage: %s [-t] [-d uniqfile] [-l label] "
+	// FIXME: manpage
+	(void) fprintf(stderr, "Usage: %s [-m] [-d uniqfile] [-l label] "
 	    "[-L labelenv] [-j nthrs] -o outfile file ...\n"
 	    "\n"
 	    "\t-d  uniquify merged output against uniqfile\n"
 	    "\t-j  use nthrs threads to perform the merge\n"
 	    "\t-l  set output container's label to specified value\n"
 	    "\t-L  set output container's label to value from environment\n"
-	    "\t-o  file to add CTF data to\n"
-	    "\t-t  require CTF data from all inputs built from C sources\n",
+	    "\t-m  allow C-based input files to not have CTF\n"
+	    "\t-o  file to add CTF data to\n",
 	    g_progname);
 }
 
@@ -352,9 +317,9 @@ main(int argc, char *argv[])
 
 	/*
 	 * We support a subset of the old CTF merge flags, mostly for
-	 * compatability.
+	 * compatibility.
 	 */
-	while ((c = getopt(argc, argv, ":d:fgj:l:L:o:t")) != -1) {
+	while ((c = getopt(argc, argv, ":d:fgj:l:L:mo:t")) != -1) {
 		switch (c) {
 		case 'd':
 			g_unique = optarg;
@@ -381,11 +346,14 @@ main(int argc, char *argv[])
 		case 'L':
 			label = getenv(optarg);
 			break;
+		case 'm':
+			ctf_required = B_FALSE;
+			break;
 		case 'o':
 			g_outfile = optarg;
 			break;
 		case 't':
-			g_req = B_TRUE;
+			/* Silently ignored for compatibility */
 			break;
 		case ':':
 			ctfmerge_usage("Option -%c requires an operand\n",
@@ -454,14 +422,7 @@ main(int argc, char *argv[])
 			case ELF_K_AR:
 				break;
 			case ELF_K_ELF:
-				if (ctfmerge_expect_ctf(argv[i], e) == B_TRUE) {
-					(void) elf_end(e);
-					(void) close(fd);
-					ctfmerge_fatal("failed to "
-					    "open %s: file was built from C "
-					    "sources, but missing CTF\n",
-					    argv[i]);
-				}
+				(void) ctfmerge_check_for_c(argv[i], e);
 				(void) elf_end(e);
 				(void) close(fd);
 				continue;
