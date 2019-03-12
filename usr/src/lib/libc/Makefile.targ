@@ -269,7 +269,7 @@ pics/%.o: $(LIBCBASE)/../port/unwind/%.c
 
 pics/%.o: $(LIBCBASE)/../$(MACH)/unwind/%.s
 	$(BUILD.s)
-	$(POST_PROCESS_O)
+	$(POST_PROCESS_S_O)
 
 pics/%.o: $(LIBCBASE)/../port/sys/%.c
 	$(COMPILE.c) -o $@ $<

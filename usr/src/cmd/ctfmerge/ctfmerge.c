@@ -286,7 +286,6 @@ ctfmerge_file_add(ctf_merge_t *cmh, const char *file, uint_t flags)
 	}
 
 	(void) elf_end(e);
-	// FIXME: needed if ctfmerge_elfopen() worked??
 	(void) close(fd);
 }
 

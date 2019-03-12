@@ -31,7 +31,7 @@ OBJECTS = $(ASOBJS) $(MACHCOBJS) $(COBJS) $(V1_OBJS)
 
 include ../../Makefile.lib
 
-SRCS = 	$(ASOBJS:%.o=../$(MACH)/%.s)	\
+SRCS =	$(ASOBJS:%.o=../$(MACH)/%.s)	\
 	$(MACHCOBJS:%.o=../$(MACH)/%.c)	\
 	$(V1_OBJS:%.o=../common/%.c)	\
 	$(COBJS:%.o=../common/%.c)

@@ -26,17 +26,18 @@ if [[ -z "$TMPDIR" ]]; then
 	TMPDIR="/tmp"
 fi
 
+CC="gcc"
+CTFCONVERT="ctfconvert"
+CTFMERGE="ctfmerge"
+DEBUGFLAGS="-gdwarf-2 "
+
 ctf_arg0=$(basename $0)
 ctf_root=$(cd $(dirname $0) && echo $PWD)
 ctf_tests=
-ctf_compiler="gcc"
-ctf_convert="ctfconvert"
-ctf_merge="ctfmerge"
-ctf_debugflags="-gdwarf-2 "
 ctf_mach32="-m32"
 ctf_mach64="-m64"
-ctf_32cflags="$ctf_mach32 $ctf_debugflags"
-ctf_64cflags="$ctf_mach64 $ctf_debugflags"
+ctf_32cflags="$ctf_mach32 $DEBUGFLAGS"
+ctf_64cflags="$ctf_mach64 $DEBUGFLAGS"
 ctf_temp="$TMPDIR/ctftest.$$.o"
 ctf_makefile="Makefile.ctftest"
 ctf_nerrs=0
@@ -96,9 +97,9 @@ announce()
 {
 	cat << EOF
 Beginning CTF tests with the following settings:
-COMPILER:	$(which $ctf_compiler)
-CTFCONVERT:	$(which $ctf_convert)
-CTFMERGE:	$(which $ctf_merge)
+COMPILER:	$(which $CC)
+CTFCONVERT:	$(which $CTFCONVERT)
+CTFMERGE:	$(which $CTFMERGE)
 32-bit CFLAGS:	$ctf_32cflags
 64-bit CFLAGS:	$ctf_64cflags
 
@@ -109,12 +110,12 @@ run_one()
 {
 	typeset source=$1 checker=$2 flags=$3
 
-	if ! "$ctf_compiler" $flags -o "$ctf_temp" -c "$source"; then
+	if ! "$CC" $flags -o "$ctf_temp" -c "$source"; then
 		test_fail "failed to compile $source with flags: $flags"
 		return
 	fi
 
-	if ! "$ctf_convert" "$ctf_temp"; then
+	if ! "$CTFCONVERT" "$ctf_temp"; then
 		test_fail "failed to convert CTF in $source"
 		return
 	fi
@@ -149,12 +150,12 @@ run_dir()
 
 	if ! gmake -C $dir -f Makefile.ctftest \
 	    BUILDDIR="$outdir" \
-	    CC="$ctf_compiler" \
+	    CC="$CC" \
 	    CFLAGS32="$ctf_mach32" \
 	    CFLAGS64="$ctf_mach64" \
-	    DEBUGFLAGS="$ctf_debugflags" \
-	    CTFCONVERT="$ctf_convert" \
-	    CTFMERGE="$ctf_merge" \
+	    DEBUGFLAGS="$DEBUGFLAGS" \
+	    CTFCONVERT="$CTFCONVERT" \
+	    CTFMERGE="$CTFMERGE" \
 	    build 1>/dev/null; then
 		rm -rf $outdir
 		test_fail "failed to build $dir"
@@ -222,16 +223,7 @@ run_tests()
 
 	for f in $(find "$ctf_root" -maxdepth 1 -type f -name 'ctftest-*'); do
 		echo "Running $f in $outdir"
-		(
-			cd $outdir
-			export CC="$ctf_compiler"
-			export CFLAGS32="$ctf_mach32"
-		    	export CFLAGS64="$ctf_mach64"
-			export DEBUGFLAGS="$ctf_debugflags"
-			export CTFCONVERT="$ctf_convert"
-			export CTFMERGE="$ctf_merge"
-			$f
-		)
+		(cd $outsdir && $f)
 
 		if [[ $? -ne 0 ]]; then
 			test_fail "$f failed"
@@ -246,16 +238,16 @@ run_tests()
 while getopts ":c:g:m:t:" c $@; do
 	case "$c" in
 	c)
-		ctf_compiler=$OPTARG
+		CC=$OPTARG
 		;;
 	g)
-		ctf_debugflags=$OPTARG
+		DEBUGFLAGS=$OPTARG
 		;;
 	m)
-		ctf_merge=$OPTARG
+		CTFMERGE=$OPTARG
 		;;
 	t)
-		ctf_convert=$OPTARG
+		CTFCONVERT=$OPTARG
 		;;
 	:)
 		usage "option requires an argument -- $OPTARG"
@@ -266,12 +258,14 @@ while getopts ":c:g:m:t:" c $@; do
 	esac
 done
 
-ctf_32cflags="$ctf_mach32 $ctf_debugflags"
-ctf_64cflags="$ctf_mach64 $ctf_debugflags"
+export CC DEBUGFLAGS CTFMERGE CTFCONVERT
 
-check_env "$ctf_compiler"
-check_env "$ctf_convert"
-check_env "$ctf_merge"
+ctf_32cflags="$ctf_mach32 $DEBUGFLAGS"
+ctf_64cflags="$ctf_mach64 $DEBUGFLAGS"
+
+check_env "$CC"
+check_env "$CTFCONVERT"
+check_env "$CTFMERGE"
 announce
 
 run_tests

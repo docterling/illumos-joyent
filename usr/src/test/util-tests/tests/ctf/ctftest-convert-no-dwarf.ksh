@@ -38,11 +38,14 @@ fail_no_debug()
 
 	set -e
 
-	if ! echo "$out" | \
-	    grep "No debug info found to convert from" >/dev/null; then
-		fail "$cmd: incorrect output $out"
+	if echo "$out" | grep "is missing debug info" >/dev/null; then
 		return;
 	fi
+
+	if echo "$out" | grep "does not contain DWARF data" >/dev/null; then
+		return;
+	fi
+	fail "$cmd: incorrect output $out"
 }
 
 has_ctf()
@@ -101,12 +104,18 @@ fail_no_debug file1.o
 $CC -c -o file1.o file1.c
 $CTFCONVERT -m file1.o
 
+echo "$progname: A binary with DWARF but 0 debug dies should fail conversion"
+
+$CC -o mybin file1.c
+fail_no_debug mybin
+$CC -o mybin file1.c
+$CTFCONVERT -m mybin
+
 echo "$progname: One C file missing DWARF should fail ctfconvert"
 
 $CC -c -o file1.o file1.c
 $CC $DEBUGFLAGS -c -o file2.o file2.c
 ld -r -o files.o file2.o file1.o
-# FIXME: known to fail right now
 fail_no_debug files.o
 ld -r -o files.o file2.o file1.o
 $CTFCONVERT -m files.o
@@ -115,15 +124,15 @@ has_ctf files.o
 echo "$progname: One .cc file missing DWARF should pass"
 
 $CC $DEBUGFLAGS -c -o file1.o file1.c
-$CC -c -o file2.o file2.c
+$CC $DEBUGFLAGS -c -o file2.o file2.c
 $CC -c -o file3.o file3.cc
-$CC -o mybin file1.o file2.o file3.o
-$CTFCONVERT mybin
-has_ctf mybin
+ld -r -o files.o file1.o file2.o file3.o
+$CTFCONVERT files.o
+has_ctf files.o
 
 echo "$progname: One .s file missing DWARF should pass"
 $CC $DEBUGFLAGS -c -o file1.o file1.c
-$CC -c -o file2.o file2.c
+$CC $DEBUGFLAGS -c -o file2.o file2.c
 as -o file4.o file4.s
 $CC -o mybin file1.o file2.o file4.o
 $CTFCONVERT mybin

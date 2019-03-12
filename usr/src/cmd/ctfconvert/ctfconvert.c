@@ -266,16 +266,10 @@ main(int argc, char *argv[])
 
 	ctfconvert_altexec(argv);
 
-	while ((c = getopt(argc, argv, ":j:kl:L:mo:iX")) != -1) {
+	while ((c = getopt(argc, argv, ":ij:kl:L:mo:X")) != -1) {
 		switch (c) {
-		case 'k':
-			keep = B_TRUE;
-			break;
-		case 'l':
-			label = optarg;
-			break;
-		case 'L':
-			label = getenv(optarg);
+		case 'i':
+			ignore_non_c = B_TRUE;
 			break;
 		case 'j':
 			errno = 0;
@@ -287,14 +281,20 @@ main(int argc, char *argv[])
 			}
 			nthreads = (uint_t)argj;
 			break;
+		case 'k':
+			keep = B_TRUE;
+			break;
+		case 'l':
+			label = optarg;
+			break;
+		case 'L':
+			label = getenv(optarg);
+			break;
 		case 'm':
 			flags |= CTF_CU_ALLOW_MISSING;
 			break;
 		case 'o':
 			outfile = optarg;
-			break;
-		case 'i':
-			ignore_non_c = B_TRUE;
 			break;
 		case 'X':
 			optx = B_TRUE;
@@ -359,8 +359,12 @@ main(int argc, char *argv[])
 		if (keep == B_FALSE)
 			(void) unlink(infile);
 
-		ctfconvert_fatal("CTF conversion failed: %s\n",
-		    err == ECTF_CONVBKERR ? buf : ctf_errmsg(err));
+		if (err == ECTF_CONVBKERR || err == ECTF_CONVNODEBUG) {
+			ctfconvert_fatal("%s", buf);
+		} else {
+			ctfconvert_fatal("CTF conversion failed: %s\n",
+			    ctf_errmsg(err));
+		}
 	}
 
 	if (optx == B_TRUE)

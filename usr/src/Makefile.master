@@ -1127,7 +1127,7 @@ PKGPUBLISHER_NONREDIST=	on-extra
 	$(POST_PROCESS)
 .cc.o:
 	$(COMPILE.cc) $(OUTPUT_OPTION) $<
-	$(POST_PROCESS_C_O)
+	$(POST_PROCESS_CC_O)
 .cc.a:
 	$(COMPILE.cc) -o $% $<
 	$(AR) $(ARFLAGS) $@ $%
