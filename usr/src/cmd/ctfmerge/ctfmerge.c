@@ -39,7 +39,6 @@ static char *g_progname;
 static char *g_unique;
 static char *g_outfile;
 static uint_t g_nctf;
-static boolean_t ctf_required = B_TRUE;
 
 #define	CTFMERGE_OK	0
 #define	CTFMERGE_FATAL	1
@@ -65,12 +64,16 @@ ctfmerge_fatal(const char *fmt, ...)
 }
 
 /*
- * We failed to find CTF for this file, check if it's OK...
+ * We failed to find CTF for this file, check if it's OK. If we're not derived
+ * from C, or we have the -m option, we let missing CTF pass.
  */
-static boolean_t
-ctfmerge_check_for_c(const char *name, Elf *elf)
+static void
+ctfmerge_check_for_c(const char *name, Elf *elf, uint_t flags)
 {
 	char errmsg[1024];
+
+	if (flags & CTF_CU_ALLOW_MISSING)
+		return;
 
 	switch (ctf_has_c_source(elf, errmsg, sizeof (errmsg))) {
 	case -1:
@@ -78,26 +81,21 @@ ctfmerge_check_for_c(const char *name, Elf *elf)
 		break;
 
 	case 0:
-		/* Not a C-derived object: it's fine.  */
-		return (B_TRUE);
+		return;
 
 	default:
-		if (!ctf_required)
-			return (B_FALSE);
 		ctfmerge_fatal("failed to open %s: %s\n", name,
 		    ctf_errmsg(ECTF_NOCTFDATA));
 		break;
 	}
-
-	return (B_FALSE);
 }
 
 /*
  * Go through and construct enough information for this Elf Object to try and do
  * a ctf_bufopen().
  */
-static void
-ctfmerge_elfopen(const char *name, Elf *elf, ctf_merge_t *cmh)
+static int
+ctfmerge_elfopen(const char *name, Elf *elf, ctf_merge_t *cmh, uint_t flags)
 {
 	GElf_Ehdr ehdr;
 	GElf_Shdr shdr;
@@ -180,18 +178,18 @@ ctfmerge_elfopen(const char *name, Elf *elf, ctf_merge_t *cmh)
 		}
 	}
 
-	if (ctfsect.cts_type == SHT_NULL && !ctfmerge_check_for_c(name, elf))
-		return;
+	if (ctfsect.cts_type == SHT_NULL) {
+		ctfmerge_check_for_c(name, elf, flags);
+		return (ENOENT);
+	}
 
 	if (symsect.cts_type != SHT_NULL && strsect.cts_type != SHT_NULL) {
 		fp = ctf_bufopen(&ctfsect, &symsect, &strsect, &err);
 	} else {
-		// FIXME: what case is this
 		fp = ctf_bufopen(&ctfsect, NULL, NULL, &err);
 	}
 
 	if (fp == NULL) {
-		// FIXME?? this did expect_ctf before?
 		ctfmerge_fatal("failed to open file %s: %s\n",
 		    name, ctf_errmsg(err));
 	}
@@ -200,25 +198,29 @@ ctfmerge_elfopen(const char *name, Elf *elf, ctf_merge_t *cmh)
 		ctfmerge_fatal("failed to add input %s: %s\n",
 		    name, ctf_errmsg(err));
 	}
+
 	g_nctf++;
+	return (0);
 }
 
 static void
 ctfmerge_read_archive(const char *name, int fd, Elf *elf,
-    ctf_merge_t *cmh)
+    ctf_merge_t *cmh, uint_t flags)
 {
 	Elf *aelf;
 	Elf_Cmd cmd = ELF_C_READ;
 	int cursec = 1;
-	char *nname;
 
 	while ((aelf = elf_begin(fd, cmd, elf)) != NULL) {
+		boolean_t elfused = B_FALSE;
+		char *nname = NULL;
 		Elf_Arhdr *arhdr;
-		boolean_t leakelf = B_FALSE;
 
 		if ((arhdr = elf_getarhdr(aelf)) == NULL)
 			ctfmerge_fatal("failed to get archive header %d for "
 			    "%s: %s\n", cursec, name, elf_errmsg(elf_errno()));
+
+		cmd = elf_next(aelf);
 
 		if (*(arhdr->ar_name) == '/')
 			goto next;
@@ -230,26 +232,62 @@ ctfmerge_read_archive(const char *name, int fd, Elf *elf,
 
 		switch (elf_kind(aelf)) {
 		case ELF_K_AR:
-			ctfmerge_read_archive(nname, fd, aelf, cmh);
-			free(nname);
+			ctfmerge_read_archive(nname, fd, aelf, cmh, flags);
 			break;
 		case ELF_K_ELF:
-			ctfmerge_elfopen(nname, aelf, cmh);
-			free(nname);
-			// FIXME
-			leakelf = B_TRUE;
+			/* ctfmerge_elfopen() takes ownership of aelf. */
+			if (ctfmerge_elfopen(nname, aelf, cmh, flags) == 0)
+				aelf = NULL;
 			break;
 		default:
 			ctfmerge_fatal("unknown elf kind (%d) in archive %d "
 			    "for %s\n", elf_kind(aelf), cursec, name);
+			break;
 		}
 
 next:
-		cmd = elf_next(aelf);
-		if (leakelf == B_FALSE)
-			(void) elf_end(aelf);
+		(void) elf_end(aelf);
+		free(nname);
 		cursec++;
 	}
+}
+
+static void
+ctfmerge_file_add(ctf_merge_t *cmh, const char *file, uint_t flags)
+{
+	Elf *e;
+	int fd;
+
+	if ((fd = open(file, O_RDONLY)) < 0) {
+		ctfmerge_fatal("failed to open file %s: %s\n",
+		    file, strerror(errno));
+	}
+
+	if ((e = elf_begin(fd, ELF_C_READ, NULL)) == NULL) {
+		(void) close(fd);
+		ctfmerge_fatal("failed to open %s: %s\n",
+		    file, elf_errmsg(elf_errno()));
+	}
+
+	switch (elf_kind(e)) {
+	case ELF_K_AR:
+		ctfmerge_read_archive(file, fd, e, cmh, flags);
+		break;
+
+	case ELF_K_ELF:
+		/* ctfmerge_elfopen() takes ownership of e. */
+		if (ctfmerge_elfopen(file, e, cmh, flags) == 0)
+			e = NULL;
+		break;
+
+	default:
+		ctfmerge_fatal("unknown elf kind (%d) for %s\n",
+		    elf_kind(e), file);
+	}
+
+	(void) elf_end(e);
+	// FIXME: needed if ctfmerge_elfopen() worked??
+	(void) close(fd);
 }
 
 static void
@@ -306,8 +344,9 @@ main(int argc, char *argv[])
 	uint_t nthreads = CTFMERGE_DEFAULT_NTHREADS;
 	char *tmpfile = NULL, *label = NULL;
 	int wflags = CTF_ELFWRITE_F_COMPRESS;
-	ctf_file_t *ofp;
+	uint_t flags = 0;
 	ctf_merge_t *cmh;
+	ctf_file_t *ofp;
 	long argj;
 	char *eptr;
 
@@ -347,7 +386,7 @@ main(int argc, char *argv[])
 			label = getenv(optarg);
 			break;
 		case 'm':
-			ctf_required = B_FALSE;
+			flags |= CTF_CU_ALLOW_MISSING;
 			break;
 		case 'o':
 			g_outfile = optarg;
@@ -398,51 +437,7 @@ main(int argc, char *argv[])
 		    nthreads, ctf_errmsg(err));
 
 	for (i = 0; i < argc; i++) {
-		ctf_file_t *ifp;
-		int fd;
-
-		if ((fd = open(argv[i], O_RDONLY)) < 0)
-			ctfmerge_fatal("failed to open file %s: %s\n",
-			    argv[i], strerror(errno));
-		ifp = ctf_fdopen(fd, &err);
-		if (ifp == NULL) {
-			Elf *e;
-
-			if ((e = elf_begin(fd, ELF_C_READ, NULL)) == NULL) {
-				(void) close(fd);
-				ctfmerge_fatal("failed to open %s: %s\n",
-				    argv[i], ctf_errmsg(err));
-			}
-
-			/*
-			 * It's an ELF file, check if we have an archive or if
-			 * we're expecting CTF here.
-			 */
-			switch (elf_kind(e)) {
-			case ELF_K_AR:
-				break;
-			case ELF_K_ELF:
-				(void) ctfmerge_check_for_c(argv[i], e);
-				(void) elf_end(e);
-				(void) close(fd);
-				continue;
-			default:
-				(void) elf_end(e);
-				(void) close(fd);
-				ctfmerge_fatal("failed to open %s: "
-				    "unsupported ELF file type", argv[i]);
-			}
-
-			ctfmerge_read_archive(argv[i], fd, e, cmh);
-			(void) elf_end(e);
-			(void) close(fd);
-			continue;
-		}
-		(void) close(fd);
-		if ((err = ctf_merge_add(cmh, ifp)) != 0)
-			ctfmerge_fatal("failed to add input %s: %s\n",
-			    argv[i], ctf_errmsg(err));
-		g_nctf++;
+		ctfmerge_file_add(cmh, argv[i], flags);
 	}
 
 	if (g_nctf == 0) {

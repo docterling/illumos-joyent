@@ -147,7 +147,7 @@ run_dir()
 		fatal "failed to make temporary directory '$outdir'"
 	fi
 
-	if ! make -C $dir -f Makefile.ctftest \
+	if ! gmake -C $dir -f Makefile.ctftest \
 	    BUILDDIR="$outdir" \
 	    CC="$ctf_compiler" \
 	    CFLAGS32="$ctf_mach32" \
@@ -161,7 +161,7 @@ run_dir()
 		return
 	fi
 
-	if ! make -C $dir -f Makefile.ctftest \
+	if ! gmake -C $dir -f Makefile.ctftest \
 	    BUILDDIR="$outdir" \
 	    CHECK32="$check32" \
 	    CHECK64="$check64" \
@@ -213,6 +213,34 @@ run_tests()
 			test_fail "missing checker for $t"
 		fi
 	done
+
+	outdir="$TMPDIR/ctftest.$$"
+
+	if ! mkdir $outdir; then
+		fatal "failed to make temporary directory '$outdir'"
+	fi
+
+	for f in $(find "$ctf_root" -maxdepth 1 -type f -name 'ctftest-*'); do
+		echo "Running $f in $outdir"
+		(
+			cd $outdir
+			export CC="$ctf_compiler"
+			export CFLAGS32="$ctf_mach32"
+		    	export CFLAGS64="$ctf_mach64"
+			export DEBUGFLAGS="$ctf_debugflags"
+			export CTFCONVERT="$ctf_convert"
+			export CTFMERGE="$ctf_merge"
+			$f
+		)
+
+		if [[ $? -ne 0 ]]; then
+			test_fail "$f failed"
+		else
+			echo "TEST PASSED: $f"
+		fi
+	done
+
+	rm -rf $outdir
 }
 
 while getopts ":c:g:m:t:" c $@; do

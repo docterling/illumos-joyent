@@ -2834,8 +2834,8 @@ ctf_dwarf_init_die(int fd, Elf *elf, ctf_cu_t *cup, int ndie, char *errbuf,
 
 
 int
-ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, ctf_file_t **fpp,
-    char *errmsg, size_t errlen)
+ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, uint_t flags,
+    ctf_file_t **fpp, char *errmsg, size_t errlen)
 {
 	int err, ret, ndies, i;
 	Dwarf_Debug dw;
@@ -2898,7 +2898,7 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, ctf_file_t **fpp,
 	ctf_dprintf("found %d DWARF die(s)\n", ndies);
 
 	// FIXME: here we should look for all C files (STT_FILES), and complain
-	// if we don't find a matching cu_name?
+	// if we don't find a matching cu_name, depending on CTF_CU_ALLOW_MISSING
 
 	/*
 	 * If we only have one compilation unit, there's no reason to use

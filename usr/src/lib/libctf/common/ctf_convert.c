@@ -118,7 +118,7 @@ ctf_elfconvert(int fd, Elf *elf, const char *label, uint_t nthrs, uint_t flags,
 		return (NULL);
 	}
 
-	if (flags & ~CTF_CONVERT_F_IGNNONC) {
+	if (flags & ~CTF_CU_ALLOW_MISSING) {
 		*errp = EINVAL;
 		return (NULL);
 	}
@@ -143,7 +143,8 @@ ctf_elfconvert(int fd, Elf *elf, const char *label, uint_t nthrs, uint_t flags,
 
 	for (i = 0; i < NCONVERTS; i++) {
 		fp = NULL;
-		err = ctf_converters[i](fd, elf, nthrs, &fp, errbuf, errlen);
+		err = ctf_converters[i](fd, elf, nthrs, flags,
+		    &fp, errbuf, errlen);
 
 		if (err != ECTF_CONVNODEBUG)
 			break;

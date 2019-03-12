@@ -75,6 +75,7 @@ ctfconvert_usage(const char *fmt, ...)
 	    "\t-i  ignore files not built partially from C sources\n"
 	    "\t-j  use nthrs threads to perform the merge\n"
 	    "\t-k  keep around original input file on failure\n"
+	    "\t-m  allow input to have missing debug info\n"
 	    "\t-o  copy input to outfile and add CTF\n"
 	    "\t-l  set output container's label to specified value\n"
 	    "\t-L  set output container's label to value from environment\n",
@@ -259,12 +260,13 @@ main(int argc, char *argv[])
 	char *eptr;
 	char buf[4096];
 	boolean_t optx = B_FALSE;
+	boolean_t ignore_non_c = B_FALSE;
 
 	ctfconvert_progname = basename(argv[0]);
 
 	ctfconvert_altexec(argv);
 
-	while ((c = getopt(argc, argv, ":j:kl:L:o:iX")) != -1) {
+	while ((c = getopt(argc, argv, ":j:kl:L:mo:iX")) != -1) {
 		switch (c) {
 		case 'k':
 			keep = B_TRUE;
@@ -285,11 +287,14 @@ main(int argc, char *argv[])
 			}
 			nthreads = (uint_t)argj;
 			break;
+		case 'm':
+			flags |= CTF_CU_ALLOW_MISSING;
+			break;
 		case 'o':
 			outfile = optarg;
 			break;
 		case 'i':
-			flags |= CTF_CONVERT_F_IGNNONC;
+			ignore_non_c = B_TRUE;
 			break;
 		case 'X':
 			optx = B_TRUE;
@@ -307,8 +312,8 @@ main(int argc, char *argv[])
 	argv += optind;
 	argc -= optind;
 
-	if (argc < 1) {
-		ctfconvert_usage("Missing required input file\n");
+	if (argc != 1) {
+		ctfconvert_usage("Exactly one input file is required\n");
 		return (CTFCONVERT_USAGE);
 	}
 	infile = argv[0];
@@ -334,14 +339,20 @@ main(int argc, char *argv[])
 	    sizeof (buf));
 	if (ofp == NULL) {
 		/*
-		 * If we get ECTF_CONVNOCSRC, it means that our input file was
-		 * not built even in part from a C source file. In general, it
-		 * makes no sense for us to run ctfconvert on such an input:
-		 * however, the traditional -i option makes this silently
-		 * "succeed".
+		 * Normally, ctfconvert requires that its input file has at
+		 * least one C-source compilation unit, and that every C-source
+		 * compilation unit has DWARF. This is to avoid accidentally
+		 * leaving out useful CTF.
+		 *
+		 * However, for the benefit of intransigent build environments,
+		 * the -i and -m options can be used to relax this.
 		 */
-		if (err == ECTF_CONVNOCSRC &&
-		    (flags & CTF_CONVERT_F_IGNNONC) != 0) {
+		if (err == ECTF_CONVNOCSRC && ignore_non_c) {
+			exit(CTFCONVERT_OK);
+		}
+
+		if (err == ECTF_CONVNODEBUG &&
+		    (flags & CTF_CU_ALLOW_MISSING) != 0) {
 			exit(CTFCONVERT_OK);
 		}
 
