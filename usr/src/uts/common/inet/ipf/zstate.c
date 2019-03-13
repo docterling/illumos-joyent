@@ -151,7 +151,9 @@ struct file;
 
 /* Extra includes outside normal ipf things. */
 #include <sys/types.h>
+#include <sys/ddi.h>
 #include <inet/ip6.h>
+#include <inet/tcp.h>
 /* Because ipf compiles this kernel file in userland testing... */
 #ifndef ASSERT3U
 #define	ASSERT3U(a, b, c) ASSERT(a ## b ## c);
@@ -217,9 +219,9 @@ ifs_to_did(ipf_stack_t *ifs)
 		zone_t *zone;
 
 		/*
-		 * Because we can't get the zone_did at initialization time
-		 * because most zone data isn't readily available then,
-		 * cement the did in place now.
+		 * We can't get the zone_did at initialization time because
+		 * most zone data isn't readily available then. So cement the
+		 * did in place now.
 		 */
 		ASSERT(ifs->ifs_zone != GLOBAL_ZONEID);
 		zone = zone_find_by_id(ifs->ifs_zone);
@@ -373,6 +375,13 @@ typedef struct ipf_zstate_bucket_s {
 	avl_tree_t ipfzsb_tree;
 } ipf_zstate_bucket_t;
 
+/* First few states of the TCP state machine to track the 3-way handshake. */
+typedef enum ipf_zstate_tcp3way_s {
+	TCP_3WAY_IDLE = 0,
+	TCP_3WAY_SYN_SENT,
+	TCP_3WAY_SYNACK_RECVD
+} ipf_zstate_tcp3way_t;
+
 /*
  * zstate flows: distinct address layouts for IPv4 vs. IPv6 because you can do
  * IPv4 5-tuple comparisons with two uint64_t compares, vs. five of them for
@@ -382,6 +391,9 @@ typedef struct ipf_zflow_s {
 	/* Linkage */
 	avl_node_t ipfzfl_node;
 	ipf_zstate_bucket_t *ipfzfl_bucket;
+
+	/* Needs a mutex... */
+	kmutex_t ipfzfl_lock;
 
 	/* Search key. */
 	union {
@@ -400,7 +412,7 @@ typedef struct ipf_zflow_s {
 		uint64_t ppu_all;
 		struct {
 			uint16_t ppue_lport;
-			uint16_t ppue_dport;
+			uint16_t ppue_fport;
 			uint8_t ppue_protocol;
 			uint_t ppue_mbz[3];
 		} ppu_elements;
@@ -408,8 +420,10 @@ typedef struct ipf_zflow_s {
 
 	/* Other state... */
 	hrtime_t ipfzfl_expiry;
-	uint8_t ipfzfl_direction;
-	uint8_t ipfzfl_tcphandshake;
+	boolean_t ipfzfl_out;	/* from IPF's fr_info_t fin_out. */
+	ipf_zstate_tcp3way_t ipfzfl_tcphandshake;
+	uint32_t ipfzfl_tcpiseq; /* SYN-send's ('i'nit) sequence number. */
+	uint32_t ipfzfl_tcprseq; /* SYN+ACK-send's ('r'esp) sequence number. */
 	uint32_t ipfzfl_refcnt;
 	uint32_t ipfzfl_ruleid;
 } ipf_zflow_t;
@@ -447,23 +461,30 @@ ipf_zflow_refrele(ipf_zflow_t *ipfzfl)
  * We're doing 256 AVL trees.
  */
 static inline uint8_t
-zstate_hash(uint32_t *laddr, uint32_t *faddr, uint16_t lport, uint16_t rport,
-    uint8_t protocol, uint8_t version)
+zstate_hash(uint8_t version, ipf_zflow_t *zflow)
 {
-	uint8_t results = protocol;
-	uint32_t acc32 =
-	    *laddr ^ *faddr ^ ((uint32_t)lport) ^ ((uint32_t)rport);
+	uint64_t acc64 = zflow->ipfzfl_portprotocol;
+	uint8_t *bytes = (uint8_t *)&acc64;
+	uint8_t results;
 
 	if (version == IPV6_VERSION) {
-		acc32 ^= laddr[1];
-		acc32 ^= laddr[2];
-		acc32 ^= laddr[3];
-		acc32 ^= faddr[1];
-		acc32 ^= faddr[2];
-		acc32 ^= faddr[3];
+		acc64 ^= zflow->ipfzfl_addrs6[0];
+		acc64 ^= zflow->ipfzfl_addrs6[1];
+		acc64 ^= zflow->ipfzfl_addrs6[2];
+		acc64 ^= zflow->ipfzfl_addrs6[3];
+	} else {
+		ASSERT(version == IPV4_VERSION);
+		acc64 ^= zflow->ipfzfl_addrs4;
 	}
 
-	results ^= (acc32 >> 24) ^ (acc32 >> 16) ^ (acc32 >> 8) ^ acc32;
+	results = bytes[0];
+	results ^= bytes[1];
+	results ^= bytes[2];
+	results ^= bytes[3];
+	results ^= bytes[4];
+	results ^= bytes[5];
+	results ^= bytes[6];
+	results ^= bytes[7];
 
 	return (results);
 }
@@ -474,8 +495,92 @@ zstate_hash(uint32_t *laddr, uint32_t *faddr, uint16_t lport, uint16_t rport,
 typedef struct ipf_zstate_s {
 	ipf_zstate_bucket_t ipfzs_v4[IPFZS_BUCKETS];
 	ipf_zstate_bucket_t ipfzs_v6[IPFZS_BUCKETS];
+	timeout_id_t ipfzs_event;
+	hrtime_t ipfzs_interval;
 	/* XXX KEBE ASKS kmem_cache? */
 } ipf_zstate_t;
+
+/* Cheesy globals to set initial timing intervals. */
+hrtime_t ipf_zstate_min_interval = MSEC2NSEC(500);
+hrtime_t ipf_zstate_max_interval = SEC2NSEC(16);
+
+static void
+ipf_zstate_reap(void *cookie)
+{
+	ipf_zstate_t *zstate = (ipf_zstate_t *)cookie;
+	hrtime_t begin = gethrtime(), interval;
+	int i;
+
+	for (i = 0 ; i < IPFZS_BUCKETS; i++) {
+		ipf_zflow_t *zflow, *next;
+		avl_tree_t *tree;
+		boolean_t trashit;
+
+		mutex_enter(&(zstate->ipfzs_v4[i].ipfzsb_lock));
+		tree = &(zstate->ipfzs_v4[i].ipfzsb_tree);
+		zflow = avl_first(tree);
+		while (zflow != NULL) {
+			next = AVL_NEXT(tree, zflow);
+
+			mutex_enter(&zflow->ipfzfl_lock);
+			trashit = (zflow->ipfzfl_expiry == 0 ||
+			    zflow->ipfzfl_expiry < begin);
+			mutex_exit(&zflow->ipfzfl_lock);
+			if (trashit) {
+				DTRACE_PROBE1(ipf__zflow__removal__v4,
+				    ipf_zflow_t *, zflow);
+				avl_remove(tree, zflow);
+				ipf_zflow_refrele(zflow);
+			}
+			/* Assume "next" linkage is still good. */
+			zflow = next;
+		}
+		mutex_exit(&(zstate->ipfzs_v4[i].ipfzsb_lock));
+
+		mutex_enter(&(zstate->ipfzs_v6[i].ipfzsb_lock));
+		tree = &(zstate->ipfzs_v6[i].ipfzsb_tree);
+		zflow = avl_first(tree);
+		while (zflow != NULL) {
+			next = AVL_NEXT(tree, zflow);
+
+			mutex_enter(&zflow->ipfzfl_lock);
+			trashit = (zflow->ipfzfl_expiry == 0 ||
+			    zflow->ipfzfl_expiry < begin);
+			mutex_exit(&zflow->ipfzfl_lock);
+			if (trashit) {
+				DTRACE_PROBE1(ipf__zflow__removal__v6,
+				    ipf_zflow_t *, zflow);
+				avl_remove(tree, zflow);
+				ipf_zflow_refrele(zflow);
+			}
+			/* Assume "next" linkage is still good. */
+			zflow = next;
+		}
+		mutex_exit(&(zstate->ipfzs_v6[i].ipfzsb_lock));
+	}
+
+	interval = gethrtime() - begin;
+	if (interval > zstate->ipfzs_interval) {
+		/*
+		 * Hmmmph, time to double the interval, as we're clearly
+		 * taking too long.
+		 */
+		if (interval > ipf_zstate_max_interval) {
+			/* WOW, we have a bigger problem. */
+			DTRACE_PROBE1(ipf__zstate__interval__wall, hrtime_t,
+			    interval);
+		}
+		if (zstate->ipfzs_interval < ipf_zstate_max_interval)
+			zstate->ipfzs_interval <<= 1;
+	} else if (interval / 2 < zstate->ipfzs_interval &&
+	    zstate->ipfzs_interval > ipf_zstate_min_interval) {
+		/* If we can, shrink the interval if given the chance. */
+		zstate->ipfzs_interval >>= 1;
+	}
+
+	zstate->ipfzs_event = timeout(ipf_zstate_reap, zstate,
+	    drv_usectohz(NSEC2USEC(zstate->ipfzs_interval)));
+}
 
 void
 ipf_zstate_clear(ipf_stack_t *ifs)
@@ -488,8 +593,20 @@ ipf_zstate_clear(ipf_stack_t *ifs)
 
 	ifs->ifs_zstate_trackers = NULL;
 
-	/* XXX KEBE SAYS FILL ME IN! */
 	ASSERT3U(ifs->ifs_zstate_enabled, ==, IPF_ZSTATE_CALL);
+
+	/* Remove grim-reaper */
+	while (zstate->ipfzs_event != 0) {
+		timeout_id_t event = zstate->ipfzs_event;
+
+		zstate->ipfzs_event = 0;
+		untimeout(event);
+		/*
+		 * We loop because it's possible untimeout() loses the race to
+		 * the timeout executing, and we schedule another one in that
+		 * time.
+		 */
+	}
 
 	for (i = 0; i < IPFZS_BUCKETS; i++) {
 		ipf_zflow_t *ipfzfl;
@@ -623,10 +740,11 @@ ipf_zstate_init(frentry_t *fr, ipf_stack_t *ifs)
 	int i;
 	ipf_zstate_t *zstate;
 
-	if (ifs->ifs_zstate_trackers != NULL ||
-	    ifs->ifs_zstate_enabled != IPF_ZSTATE_CALL) {
-		return (0);
-	}
+	if (ifs->ifs_zstate_trackers != NULL)
+		return (0);	/* We're good. */
+
+	if (ifs->ifs_zstate_enabled != IPF_ZSTATE_CALL)
+		return (EOPNOTSUPP);	/* We must error-out here. */
 
 	zstate = kmem_alloc(sizeof (*zstate), KM_SLEEP);
 	for (i = 0; i < IPFZS_BUCKETS; i++) {
@@ -644,18 +762,325 @@ ipf_zstate_init(frentry_t *fr, ipf_stack_t *ifs)
 
 	ifs->ifs_zstate_trackers = zstate;
 
+	/* Launch grim-reaper */
+	zstate->ipfzs_interval = ipf_zstate_min_interval * 2;
+	zstate->ipfzs_event = timeout(ipf_zstate_reap, zstate,
+	    drv_usectohz(NSEC2USEC(zstate->ipfzs_interval)));
+
 	return (0);
+}
+
+/*
+ * Return a reference-held, in-avl-tree zflow.  Returns NULL if (not-found &
+ * not-create) or memory-allocation failure - basically if there's a problem.
+ */
+static ipf_zflow_t *
+ipf_fin_to_zflow(fr_info_t *fin, boolean_t create)
+{
+	ipf_zflow_t search = { {0} }, *result;
+	ipf_zstate_t *zstate = fin->fin_ifs->ifs_zstate_trackers;
+	ipf_zstate_bucket_t *bucket;
+	avl_index_t where;
+
+	search.ipfzfl_protocol = fin->fin_p;
+	if (fin->fin_v == IPV6_VERSION) {
+		if (fin->fin_out) {
+			search.ipfzfl_laddr6 = fin->fin_srcip6;
+			search.ipfzfl_faddr6 = fin->fin_dstip6;
+			search.ipfzfl_lport = fin->fin_sport;
+			search.ipfzfl_fport = fin->fin_dport;
+		} else {
+			search.ipfzfl_faddr6 = fin->fin_srcip6;
+			search.ipfzfl_laddr6 = fin->fin_dstip6;
+			search.ipfzfl_fport = fin->fin_sport;
+			search.ipfzfl_lport = fin->fin_dport;
+		}
+		bucket = zstate->ipfzs_v6;
+	} else {
+		ASSERT(fin->fin_v == IPV4_VERSION);
+		if (fin->fin_out) {
+			search.ipfzfl_laddr4 = fin->fin_saddr;
+			search.ipfzfl_faddr4 = fin->fin_daddr;
+			search.ipfzfl_lport = fin->fin_sport;
+			search.ipfzfl_fport = fin->fin_dport;
+		} else {
+			search.ipfzfl_faddr4 = fin->fin_saddr;
+			search.ipfzfl_laddr4 = fin->fin_daddr;
+			search.ipfzfl_fport = fin->fin_sport;
+			search.ipfzfl_lport = fin->fin_dport;
+		}
+		bucket = zstate->ipfzs_v4;
+	}
+
+	/* Advance zstate to the correct hash bucket. */
+	zstate += zstate_hash(fin->fin_v, &search);
+
+	mutex_enter(&bucket->ipfzsb_lock);
+	result = avl_find(&bucket->ipfzsb_tree, &search, &where);
+	/* Continue to hold lock so "where" will be valid. */
+	/* XXX KEBE SAYS Revisit if this is a problem. */
+
+	if (result != NULL) {
+		mutex_enter(&result->ipfzfl_lock);
+		if (result->ipfzfl_expiry == 0 ||
+		    result->ipfzfl_expiry < gethrtime()) {
+			mutex_exit(&result->ipfzfl_lock);
+			/* Delete this guy. */
+			avl_remove(&bucket->ipfzsb_tree, result);
+			ipf_zflow_refrele(result);
+			if (create)
+				goto create_anyway;
+			goto bail;
+		}
+		mutex_exit(&result->ipfzfl_lock);
+		ipf_zflow_refhold(result);
+	} else if (create) {
+create_anyway:
+		/* Reality-check vs. ipf... */
+		ASSERT(fin->fin_out == 1 || fin->fin_out == 0);
+
+		result =
+		    kmem_alloc(sizeof (*result), KM_NOSLEEP | KM_NORMALPRI);
+
+		if (result != NULL) {
+			*result = search;
+			/* One for the AVL linkage, one for the caller. */
+			result->ipfzfl_refcnt = 2;
+			result->ipfzfl_out = fin->fin_out;
+			result->ipfzfl_ruleid = fin->fin_rule;
+			/* Add 10sec lifetime for now... */
+			result->ipfzfl_expiry = gethrtime() + SEC2NSEC(10);
+			/* Caller will deal with expiry update, tcp*, etc. */
+			avl_insert(&bucket->ipfzsb_tree, result, where);
+		} else {
+			DTRACE_PROBE(ipf__zstate__nomem);
+		}
+	}
+bail:
+	mutex_exit(&bucket->ipfzsb_lock);
+
+	ASSERT3U(((result == NULL) ? fin->fin_out : result->ipfzfl_out), ==,
+	    fin->fin_out);
+
+	return (result);
+}
+
+/*
+ * Given a zflow, emit an establishment event.  Do NOT mark its lifetime
+ * as the caller may have differing opinions on the subject.  The flow's
+ * mutex is held, so no need to worry about expiry checks.
+ */
+static void
+ipf_log_zflow(ipf_zflow_t *zflow, int ipversion, ipf_stack_t *ifs)
+{
+	cfwev_t event = {0};
+	boolean_t tcpudp, icmp;
+
+	/* XXX KEBE SAYS FILL ME IN! */
+	ASSERT(MUTEX_HELD(&zflow->ipfzfl_lock));
+	ASSERT3U(ifs->ifs_zstate_enabled, ==, IPF_ZSTATE_CALL);
+
+	/*
+	 * XXX KEBE SAYS Normalize this somewhat by synching zflow and
+	 * cfwev_t.
+	 */
+
+	event.cfwev_type = CFWEV_BEGIN;
+	event.cfwev_zonedid = ifs->ifs_zone_did;
+	event.cfwev_ruleid = zflow->ipfzfl_ruleid;
+	event.cfwev_protocol = zflow->ipfzfl_protocol;
+	switch (event.cfwev_protocol) {
+	case IPPROTO_UDP:
+	case IPPROTO_TCP:
+		tcpudp = B_TRUE;
+		icmp = B_FALSE;
+		break;
+	case IPPROTO_ICMP:
+	case IPPROTO_ICMPV6:
+		tcpudp = B_FALSE;
+		icmp = B_FALSE;
+		break;
+	default:
+		tcpudp = icmp = B_FALSE;
+		break;
+	}
+	if (zflow->ipfzfl_out) {
+		event.cfwev_direction = CFWDIR_OUT;
+		if (tcpudp || icmp) {
+			/* cfwev_sport and ipfzfl_lport always hold ICMP type */
+			event.cfwev_sport = zflow->ipfzfl_lport;
+			event.cfwev_dport = zflow->ipfzfl_fport;
+		}
+		if (ipversion == IPV6_VERSION) {
+			event.cfwev_saddr = zflow->ipfzfl_laddr6;
+			event.cfwev_daddr = zflow->ipfzfl_faddr6;
+		} else {
+			IN6_IPADDR_TO_V4MAPPED(zflow->ipfzfl_laddr4,
+			    &event.cfwev_saddr);
+			IN6_IPADDR_TO_V4MAPPED(zflow->ipfzfl_faddr4,
+			    &event.cfwev_daddr);
+		}
+	} else {
+		event.cfwev_direction = CFWDIR_IN;
+		if (tcpudp) {
+			event.cfwev_dport = zflow->ipfzfl_lport;
+			event.cfwev_sport = zflow->ipfzfl_fport;
+		} else if (icmp) {
+			/* cfwev_sport and ipfzfl_lport always hold ICMP type */
+			event.cfwev_sport = zflow->ipfzfl_lport;
+		}
+		if (ipversion == IPV6_VERSION) {
+			event.cfwev_daddr = zflow->ipfzfl_laddr6;
+			event.cfwev_saddr = zflow->ipfzfl_faddr6;
+		} else {
+			IN6_IPADDR_TO_V4MAPPED(zflow->ipfzfl_laddr4,
+			    &event.cfwev_daddr);
+			IN6_IPADDR_TO_V4MAPPED(zflow->ipfzfl_faddr4,
+			    &event.cfwev_saddr);
+		}
+	}
+	/*
+	 * XXX KEBE ASKS -> something better instead?!?
+	 * uniqtime() is what ipf's GETKTIME() uses. It does give us tv_usec,
+	 * but I'm not sure if it's suitable for what we need.
+	 */
+	uniqtime(&event.cfwev_tstamp);
+
+	DTRACE_PROBE1(ipf__zstate__call, cfwev_t *, &event);
 }
 
 frentry_t *
 ipf_zstate_pass(fr_info_t *fin, uint32_t *passp)
 {
+	tcpha_t *tcph;
+	uint_t dlen = fin->fin_dlen;
+	ipf_zflow_t *zflow;
+	uint8_t synack;
+	uint32_t seqno;
 
+	/* For DEBUG kernels... */
 	ASSERT3U(fin->fin_ifs->ifs_zstate_enabled, ==, IPF_ZSTATE_CALL);
+	/* For non-DEBUG kernels... */
+	if (fin->fin_ifs->ifs_zstate_enabled != IPF_ZSTATE_CALL)
+		goto done;
 
 	/* XXX KEBE SAYS FILL ME IN! See ~/notes.. */
-	
 
+	/*
+	 * ASSSUME that:
+	 * - ipf gets fin_dp correct even for IPv6...
+	 */
+
+	switch (fin->fin_p) {
+	case IPPROTO_TCP:
+		tcph = (tcpha_t *)(fin->fin_dp);
+		/*
+		 * Assume 3-way handshake packets have no data in them,
+		 * so don't log if this is a data packet.
+		 */
+		if (dlen > TCP_MAX_HDR_LENGTH || dlen > TCP_HDR_LENGTH(tcph))
+			goto done;
+		synack = fin->fin_tcpf & (TH_SYN|TH_ACK|TH_RST);
+		if (synack == 0 || synack != fin->fin_tcpf)
+			goto done;	/* Not starting 3-way handshake. */
+
+		zflow = ipf_fin_to_zflow(fin, synack == TH_SYN);
+		if (zflow == NULL)
+			goto done;
+
+		mutex_enter(&zflow->ipfzfl_lock);
+		switch (synack) {
+		case TH_SYN:
+			/* SYN - part 1 of 3-way handshake. */
+			zflow->ipfzfl_tcphandshake = TCP_3WAY_SYN_SENT;
+			zflow->ipfzfl_tcpiseq = ntohl(tcph->tha_seq);
+			/* XXX KEBE SAYS Fix 120sec/2MSL constant later. */
+			zflow->ipfzfl_expiry = SEC2NSEC(120) + gethrtime();
+			break;
+		case (TH_SYN | TH_ACK):
+			/* SYN+ACK - part 2 of 3-way handshake. */
+			if (zflow->ipfzfl_tcphandshake != TCP_3WAY_SYN_SENT) {
+				/*
+				 * Duplicate or other out-of-order packet.
+				 * Drop.
+				 */
+				DTRACE_PROBE1(ipf__zstate__tcp__synackwrong,
+				    ipf_zflow_t *, zflow);
+				break;
+			} else if (ntohl(tcph->tha_ack) !=
+			    zflow->ipfzfl_tcpiseq + 1) {
+				/* Ooops, bad sequence number. */
+				DTRACE_PROBE1(ipf__zstate__tcp__synackbadack,
+				    ipf_zflow_t *, zflow);
+				break;
+			}
+			
+			zflow->ipfzfl_tcphandshake = TCP_3WAY_SYNACK_RECVD;
+			zflow->ipfzfl_tcprseq = ntohl(tcph->tha_seq);
+			zflow->ipfzfl_expiry = SEC2NSEC(120) + gethrtime();
+			break;
+		case TH_ACK:
+			/* Regular ACK, COULD BE part 3 of 3-way handshake. */
+			if (zflow->ipfzfl_tcphandshake !=
+			    TCP_3WAY_SYNACK_RECVD) {
+				/* Check if this is pt. 3. */
+				DTRACE_PROBE1(ipf__zstate__tcp__lastackwrong,
+				    ipf_zflow_t *, zflow);
+				break;
+			} else if (ntohl(tcph->tha_ack) !=
+			    zflow->ipfzfl_tcprseq + 1) {
+				DTRACE_PROBE1(ipf__zstate__tcp__lastackbadack,
+				    ipf_zflow_t *, zflow);
+				break;
+			} else if (ntohl(tcph->tha_seq) !=
+			    zflow->ipfzfl_tcpiseq + 1) {
+				DTRACE_PROBE1(ipf__zstate__tcp__lastackbadsyn,
+				    ipf_zflow_t *, zflow);
+				break;
+			}
+			/*
+			 * We've finished the 3-way handshake.
+			 * Generate an event...
+			 */
+			ipf_log_zflow(zflow, fin->fin_v, fin->fin_ifs);
+			/* and mark the entry as reapable. */
+			zflow->ipfzfl_expiry = 0;
+			break;
+		default:
+			/*
+			 * RST - kill state if in-sequence.
+			 */
+			ASSERT(synack & TH_RST);
+			if (synack & TH_SYN) {
+				DTRACE_PROBE1(ipf__zstate__tcp__synrst,
+				    ipf_zflow_t *, zflow);
+				break;
+			}
+			seqno = (fin->fin_out == zflow->ipfzfl_out) ?
+			    zflow->ipfzfl_tcpiseq : zflow->ipfzfl_tcprseq;
+			if ((synack & TH_ACK) == TH_ACK &&
+			    seqno + 1 == htonl(tcph->tha_ack)) {
+				zflow->ipfzfl_expiry = 0;
+			}
+			/* Else don't bother (cheesy...). */
+			break;
+		}
+		mutex_exit(&zflow->ipfzfl_lock);
+		ipf_zflow_refrele(zflow);
+		break;
+	case IPPROTO_UDP:
+		break;
+	case IPPROTO_ICMP:
+		break;
+	case IPPROTO_ICMPV6:
+		break;
+	default:
+		/* Packet we don't know how to handle.  For now, be silent. */
+		DTRACE_PROBE1(ipf__zstate__pass__unknown, fr_info_t *, fin);
+		break;
+	}
+
+done:
 	/*
 	 * You need to scribble into *passp what all pass flags need to be
 	 * there.

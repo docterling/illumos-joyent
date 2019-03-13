@@ -81,6 +81,8 @@ ipf_stack_lock
 ipf_stacks
 ipf_state
 ipf_zstate_enabled
+ipf_zstate_max_interval
+ipf_zstate_min_interval
 ipfilter_version
 ipfncb
 ipl_magic
