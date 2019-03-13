@@ -207,12 +207,11 @@ static void
 ctfmerge_read_archive(const char *name, int fd, Elf *elf,
     ctf_merge_t *cmh, uint_t flags)
 {
-	Elf *aelf;
 	Elf_Cmd cmd = ELF_C_READ;
 	int cursec = 1;
+	Elf *aelf;
 
 	while ((aelf = elf_begin(fd, cmd, elf)) != NULL) {
-		boolean_t elfused = B_FALSE;
 		char *nname = NULL;
 		Elf_Arhdr *arhdr;
 
