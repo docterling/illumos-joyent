@@ -1784,6 +1784,7 @@ ctf_dwarf_convert_type(ctf_cu_t *cup, Dwarf_Die die, ctf_id_t *idp,
 		break;
 	default:
 		ctf_dprintf("ignoring tag type %x\n", tag);
+		*idp = CTF_ERR;
 		ret = 0;
 		break;
 	}
