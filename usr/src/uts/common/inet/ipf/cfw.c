@@ -63,6 +63,7 @@
 /* Extra includes outside normal ipf things. */
 #include <sys/types.h>
 #include <inet/ip6.h>
+#include <sys/uuid.h>
 /* Because ipf compiles this kernel file in userland testing... */
 #ifndef ASSERT3U
 #define	ASSERT3U(a, b, c) ASSERT(a ## b ## c);
@@ -102,6 +103,7 @@ typedef struct cfwev_s {
 	struct timeval cfwev_tstamp;
 	zoneid_t cfwev_zonedid;	/* Pullable from ipf_stack_t. */
 	uint32_t cfwev_ruleid;	/* Pullable from fr_info_t. */
+	uuid_t cfwev_ruleuuid;	/* Pullable from fr_info_t. */
 } cfwev_t;
 
 #ifdef _KERNEL
@@ -176,6 +178,7 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	uniqtime(&event.cfwev_tstamp);
 	event.cfwev_zonedid = ifs_to_did(ifs);
 	event.cfwev_ruleid = fin->fin_rule;
+	memcpy(event.cfwev_ruleuuid, fr->fr_uuid, sizeof (uuid_t));
 
 	DTRACE_PROBE1(ipf__cfw__block, cfwev_t *, &event);
 }
@@ -251,6 +254,7 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 	event.cfwev_zonedid = ifs_to_did(ifs);
 	/* XXX KEBE ASKS -> good enough? */
 	event.cfwev_ruleid = is->is_rulen;
+	memcpy(event.cfwev_ruleuuid, is->is_uuid, sizeof (uuid_t));
 
 	/* XXX KEBE SAYS Then we do something with it. */
 	DTRACE_PROBE1(ipf__cfw__state, cfwev_t *, &event);
