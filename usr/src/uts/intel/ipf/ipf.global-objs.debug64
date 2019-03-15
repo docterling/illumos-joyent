@@ -68,6 +68,7 @@ icmptoicmp6unreach
 idletime_tab
 ip6exthdr
 ipf_cb_ops
+ipf_cfwlog_enabled
 ipf_dev_info
 ipf_devfiles
 ipf_eth_bcast_addr
@@ -80,9 +81,6 @@ ipf_proxy_debug
 ipf_stack_lock
 ipf_stacks
 ipf_state
-ipf_zstate_enabled
-ipf_zstate_max_interval
-ipf_zstate_min_interval
 ipfilter_version
 ipfncb
 ipl_magic

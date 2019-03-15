@@ -6,7 +6,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2018 Joyent, Inc.  All rights reserved.
+ * Copyright 2019, Joyent, Inc.
  */
 
 #ifndef	__IPF_STACK_H__
@@ -317,11 +317,6 @@ struct ipf_stack {
 	char			*ifs_addmask_key;
 	char			*ifs_rn_zeros;
 	char			*ifs_rn_ones;
-
-	/* zstate.c */
-	ipf_zstate_enabled_t	ifs_zstate_enabled;
-	/* XXX KEBE SAYS USE-CALL */
-	void			*ifs_zstate_trackers;
 
 #ifdef KERNEL
 	/* kstats for inbound and outbound */

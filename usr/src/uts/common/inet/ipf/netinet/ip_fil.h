@@ -8,7 +8,7 @@
  *
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  *
- * Copyright 2019 Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
  */
 
 #ifndef	__IP_FIL_H__
@@ -1562,22 +1562,12 @@ extern	int	ipllog __P((int, fr_info_t *, void **, size_t *, int *, int,
 			    ipf_stack_t *));
 extern	void	fr_logunload __P((ipf_stack_t *));
 
-/* SmartOS single-FD global-zone state accumulator.  See zstate.c for more. */
-typedef enum {
-	IPF_ZSTATE_NONE = 0,
-	IPF_ZSTATE_CALL,
-	IPF_ZSTATE_STATE
-} ipf_zstate_enabled_t;
-extern ipf_zstate_enabled_t ipf_zstate_enabled;
-/* XXX KEBE SAYS these four are USE-CALL entry points. */
-extern int ipf_zstate_init __P((frentry_t *, ipf_stack_t *));
-extern frentry_t *ipf_zstate_pass __P((fr_info_t *, uint32_t *));
-extern frentry_t *ipf_zstate_block __P((fr_info_t *, uint32_t *));
-extern void ipf_zstate_clear __P((ipf_stack_t *));
-/* XXX KEBE SAYS these two are USE-STATE entry points. */
+/* SmartOS single-FD global-zone state accumulator (see cfw.c) */
+extern boolean_t ipf_cfwlog_enabled;
 struct ipstate;	/* Ugggh. */
-extern void ipf_log_zstatelog __P((struct ipstate *, uint_t, ipf_stack_t *));
-extern void ipf_block_zstatelog __P((frentry_t *, fr_info_t *, ipf_stack_t *));
+extern void ipf_log_cfwlog __P((struct ipstate *, uint_t, ipf_stack_t *));
+extern void ipf_block_cfwlog __P((frentry_t *, fr_info_t *, ipf_stack_t *));
+#define	IFS_CFWLOG(ifs) ((ifs)->ifs_gz_controlled && ipf_cfwlog_enabled)
 
 
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));

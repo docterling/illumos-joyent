@@ -302,9 +302,6 @@ static ipfunc_resolve_t fr_availfuncs[] = {
 	{ "fr_srcgrpmap", fr_srcgrpmap, fr_grpmapinit },
 	{ "fr_dstgrpmap", fr_dstgrpmap, fr_grpmapinit },
 #endif
-	/* XXX KEBE SAYS USE-CALL */
-	{ "ipf_zstate_pass", ipf_zstate_pass, ipf_zstate_init },
-	{ "ipf_zstate_block", ipf_zstate_block, ipf_zstate_init },
 	{ "", NULL }
 };
 
@@ -2591,11 +2588,8 @@ ipf_stack_t *ifs;
 	}
 #endif
 
-	if (ifs->ifs_zstate_enabled == IPF_ZSTATE_STATE && FR_ISBLOCK(pass)) {
-		/* XXX KEBE SAYS USE-STATE */
-		ASSERT(ifs->ifs_gz_controlled);
-		ipf_block_zstatelog(fr, fin, ifs);
-	}
+	if (IFS_CFWLOG(ifs) && FR_ISBLOCK(pass))
+		ipf_block_cfwlog(fr, fin, ifs);
 
 	/*
 	 * The FI_STATE flag is cleared here so that calling fr_checkstate

@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  *
- * Copyright 2019 Joyent, Inc.
+ * Copyright (c) 2014, Joyent, Inc.  All rights reserved.
  */
 
 #if defined(KERNEL) || defined(_KERNEL)
@@ -108,7 +108,6 @@ struct file;
 #  include <sys/systm.h>
 # endif
 #endif
-#include <sys/uuid.h>
 /* END OF INCLUDES */
 
 
@@ -1446,7 +1445,6 @@ u_int flags;
 			is->is_sti.tqe_flags |= TQE_RULEBASED;
 		}
 		is->is_tag = fr->fr_logtag;
-		bcopy(fr->fr_uuid, is->is_uuid, sizeof (is->is_uuid));
 
 		is->is_ifp[(out << 1) + 1] = fr->fr_ifas[1];
 		is->is_ifp[(1 - out) << 1] = fr->fr_ifas[2];
@@ -1525,6 +1523,9 @@ u_int flags;
 #endif
 	if (ifs->ifs_ipstate_logging)
 		ipstate_log(is, ISL_NEW, ifs);
+
+	if (IFS_CFWLOG(ifs))
+		ipf_log_cfwlog(is, ISL_NEW, ifs);
 
 	RWLOCK_EXIT(&ifs->ifs_ipf_state);
 	fin->fin_rev = IP6_NEQ(&is->is_dst, &fin->fin_daddr);
@@ -2316,6 +2317,8 @@ u_32_t cmask;
 		is->is_flags &= ~(SI_W_SPORT|SI_W_DPORT);
 		if ((flags & SI_CLONED) && ifs->ifs_ipstate_logging)
 			ipstate_log(is, ISL_CLONE, ifs);
+		if ((flags & SI_CLONED) && IFS_CFWLOG(ifs))
+			ipf_log_cfwlog(is, ISL_CLONE, ifs);
 	}
 
 	ret = -1;
@@ -3399,7 +3402,15 @@ ipf_stack_t *ifs;
  
 	if (ifs->ifs_ipstate_logging != 0 && why != 0)
 		ipstate_log(is, why, ifs);
-
+#if 0
+	/*
+	 * For now, ipf_log_cfwlog() copes with all "why" values.
+	 * strictly speaking, though, they all map to one event, which for
+	 * now is not supported.
+	 */
+	if (why != 0 && IFS_CFWLOG(ifs))
+		ipf_log_cfwlog(is, why, ifs);
+#endif
 	if (is->is_rule != NULL) {
 		is->is_rule->fr_statecnt--;
 		(void)fr_derefrule(&is->is_rule, ifs);
@@ -4000,12 +4011,6 @@ ipf_stack_t *ifs;
 		ATOMIC_INCL(ifs->ifs_ips_stats.iss_logged);
 	} else {
 		ATOMIC_INCL(ifs->ifs_ips_stats.iss_logfail);
-	}
-
-	if (ifs->ifs_zstate_enabled == IPF_ZSTATE_STATE) {
-		/* XXX KEBE SAYS USE-STATE */
-		ASSERT(ifs->ifs_gz_controlled);
-		ipf_log_zstatelog(is, type, ifs);
 	}
 #endif
 }
