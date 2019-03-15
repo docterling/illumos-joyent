@@ -7,9 +7,12 @@
  *
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
+
+#include <uuid/uuid.h>
 
 #include "ipf.h"
 
@@ -386,7 +389,8 @@ ioctlfunc_t	iocfunc;
 		printf(" head %s", fp->fr_grhead);
 	if (*fp->fr_group != '\0')
 		printf(" group %s", fp->fr_group);
-	if (fp->fr_logtag != FR_NOLOGTAG || *fp->fr_nattag.ipt_tag) {
+	if (fp->fr_logtag != FR_NOLOGTAG || *fp->fr_nattag.ipt_tag ||
+	    !uuid_is_null(fp->fr_uuid)) {
 		char *s = "";
 
 		printf(" set-tag(");
@@ -397,6 +401,13 @@ ioctlfunc_t	iocfunc;
 		if (*fp->fr_nattag.ipt_tag) {
 			printf("%snat=%-.*s", s, IPFTAG_LEN,
 				fp->fr_nattag.ipt_tag);
+			s = ", ";
+		}
+		if (!uuid_is_null(fp->fr_uuid)) {
+			char uuid[UUID_PRINTABLE_STRING_LENGTH];
+
+			uuid_unparse(fp->fr_uuid, uuid);
+			printf("%suuid=%s", s, uuid);
 		}
 		printf(")");
 	}

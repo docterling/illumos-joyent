@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  *
- * Copyright (c) 2014, Joyent, Inc.  All rights reserved.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #if defined(KERNEL) || defined(_KERNEL)
@@ -108,6 +108,7 @@ struct file;
 #  include <sys/systm.h>
 # endif
 #endif
+#include <sys/uuid.h>
 /* END OF INCLUDES */
 
 
@@ -1445,6 +1446,7 @@ u_int flags;
 			is->is_sti.tqe_flags |= TQE_RULEBASED;
 		}
 		is->is_tag = fr->fr_logtag;
+		bcopy(fr->fr_uuid, is->is_uuid, sizeof (is->is_uuid));
 
 		is->is_ifp[(out << 1) + 1] = fr->fr_ifas[1];
 		is->is_ifp[(1 - out) << 1] = fr->fr_ifas[2];

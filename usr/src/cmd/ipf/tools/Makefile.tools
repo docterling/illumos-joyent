@@ -23,7 +23,7 @@
 # Use is subject to license terms.
 #
 # Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
-# Copyright (c) 2012, Joyent Inc. All rights reserved.
+# Copyright 2019 Joyent, Inc.
 #
 
 PROG=		ipf ipfs ipmon ipnat ippool ipfstat
@@ -56,7 +56,7 @@ SRCS=		$(OBJSL:%.o=../%.c)
 include ../../../Makefile.cmd
 include ../../Makefile.ipf
 
-LDLIBS		+= $(LIBBPF)
+LDLIBS		+= $(LIBBPF) -luuid
 LDFLAGS		+= $(MAPFILE.NGB:%=-M%)
 
 CPPFLAGS	+= -I. -DIPFILTER_LOOKUP -DIPFILTER_LOG

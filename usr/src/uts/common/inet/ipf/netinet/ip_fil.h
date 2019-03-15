@@ -8,7 +8,7 @@
  *
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  *
- * Copyright (c) 2014, Joyent, Inc.  All rights reserved.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef	__IP_FIL_H__
@@ -16,6 +16,7 @@
 
 #include "netinet/ip_compat.h"
 #include <sys/zone.h>
+#include <sys/uuid.h>
 
 #ifdef	SOLARIS
 #undef	SOLARIS
@@ -599,6 +600,7 @@ typedef	struct	frentry {
 	u_32_t	fr_flags;	/* per-rule flags && options (see below) */
 	u_32_t	fr_logtag;	/* user defined log tag # */
 	u_32_t	fr_collect;	/* collection number */
+	uuid_t	fr_uuid;	/* user defined uuid */
 	u_int	fr_arg;		/* misc. numeric arg for rule */ 
 	u_int	fr_loglevel;	/* syslog log facility + priority */
 	u_int	fr_age[2];	/* non-TCP timeouts */
@@ -882,6 +884,7 @@ typedef	struct	ipflog	{
 	u_32_t	fl_lflags;
 	u_32_t	fl_logtag;
 	ipftag_t	fl_nattag;
+	uuid_t	fl_uuid;
 	u_short	fl_plen;	/* extra data after hlen */
 	u_short	fl_loglevel;	/* syslog log level */
 	char	fl_group[FR_GROUPLEN];
