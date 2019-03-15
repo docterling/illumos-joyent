@@ -552,6 +552,7 @@ tagoutlist:
 tagoutspec:
 	logtag
 	| nattag
+	| uuidtag
 	;
 
 matchtagin:
