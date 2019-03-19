@@ -60,51 +60,19 @@
 #include <sys/sunddi.h>
 #endif
 
-/* Extra includes outside normal ipf things. */
-#include <sys/types.h>
-#include <inet/ip6.h>
-#include <sys/uuid.h>
-/* Because ipf compiles this kernel file in userland testing... */
-#ifndef ASSERT3U
-#define	ASSERT3U(a, b, c) ASSERT(a ## b ## c);
-#endif	/* ASSERT3U */
+#include "netinet/ipf_cfw.h"
 
 /*
  * cfw == Cloud Firewall ==> routines for a global-zone data collector about
- * ipf events for SmartOS.
+ * ipf events for SmartOS.  The only ones that CFW cares about are ones
+ * enforced by global-zone-controlled rulesets.
  *
  * The variable below is mdb-hackable to experiment with turning it on and
  * off. Eventually this will tie into a new ipf (GZ-only) device that flips
- * this on when there is an open instance.
+ * this on when there is an open instance.  It may also consume an fr_flag
+ * to have per-rule granularity.
  */
 boolean_t ipf_cfwlog_enabled;
-
-/*
- * XXX KEBE ASKS MOVE THIS TO A HEADER FILE?
- */
-#define	CFWEV_BLOCK	1
-#define	CFWEV_BEGIN	2
-#define	CFWEV_END	3
-#define	CFWDIR_IN	1
-#define	CFWDIR_OUT	2
-typedef struct cfwev_s {
-	uint16_t cfwev_type;	/* BEGIN, END, BLOCK */
-	uint8_t cfwev_protocol;	/* IPPROTO_* */
-	uint8_t cfwev_direction;
-	/*
-	 * The above "direction" informs if src/dst are local/remote or
-	 * remote/local.
-	 */
-	uint16_t cfwev_sport;	/* Source port */
-	uint16_t cfwev_dport;	/* Dest. port */
-	in6_addr_t cfwev_saddr;	/* Can be clever later with unions, w/not. */
-	in6_addr_t cfwev_daddr;
-	/* XXX KEBE ASKS hrtime for relative time from some start instead? */
-	struct timeval cfwev_tstamp;
-	zoneid_t cfwev_zonedid;	/* Pullable from ipf_stack_t. */
-	uint32_t cfwev_ruleid;	/* Pullable from fr_info_t. */
-	uuid_t cfwev_ruleuuid;	/* Pullable from fr_info_t. */
-} cfwev_t;
 
 #ifdef _KERNEL
 static inline zoneid_t
