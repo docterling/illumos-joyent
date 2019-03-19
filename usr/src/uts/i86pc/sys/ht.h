@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef	_SYS_HT_H
@@ -25,7 +25,14 @@ extern "C" {
 
 struct cpu;
 
+extern int ht_boot_disable;
+
 extern void ht_init(void);
+extern void ht_late_init(void);
+extern int ht_disable(void);
+extern boolean_t ht_can_enable(struct cpu *, int);
+extern void ht_force_enabled(void);
+
 extern void ht_intr_alloc_pil(uint_t);
 
 extern int ht_acquire(void);

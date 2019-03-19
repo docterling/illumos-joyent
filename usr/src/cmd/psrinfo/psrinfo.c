@@ -12,6 +12,7 @@
 /*
  * Copyright (c) 2012 DEY Storage Systems, Inc.  All rights reserved.
  * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2019, Joyent, Inc.
  */
 
 /*
@@ -23,6 +24,9 @@
  * All the relevant kstats are in the cpu_info kstat module.
  */
 
+#include <sys/sysmacros.h>
+
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -33,17 +37,21 @@
 #include <libgen.h>
 #include <ctype.h>
 #include <errno.h>
+#include <err.h>
+
+#include <libdevinfo.h>
 
 #define	_(x)	gettext(x)
 #if XGETTEXT
-/* These CPU states are here for benefit of xgettext */
-_("on-line")
-_("off-line")
-_("faulted")
-_("powered-off")
-_("no-intr")
-_("spare")
-_("unknown")
+	/* These CPU states are here for benefit of xgettext */
+	_("on-line")
+	_("off-line")
+	_("faulted")
+	_("powered-off")
+	_("no-intr")
+	_("spare")
+	_("unknown")
+	_("disabled")
 #endif
 
 /*
@@ -113,9 +121,11 @@ usage(char *msg)
 {
 	if (msg != NULL)
 		(void) fprintf(stderr, "%s: %s\n", cmdname, msg);
-	(void) fprintf(stderr, _("usage: \n" \
-	    "\t%s [-v] [-p] [processor_id ...]\n" \
-	    "\t%s -s [-p] processor_id\n"), cmdname, cmdname);
+	(void) fprintf(stderr, _("usage: \n"
+	    "\t%s -r propname\n"
+	    "\t%s [-v] [-p] [processor_id ...]\n"
+	    "\t%s -s [-p] processor_id\n"),
+	    cmdname, cmdname, cmdname);
 	exit(2);
 }
 
@@ -432,6 +442,65 @@ print_normal(int nspec)
 	}
 }
 
+static bool
+valid_propname(const char *propname)
+{
+	size_t i;
+
+	const char *props[] = {
+		"ht_enabled",
+	};
+
+	for (i = 0; i < ARRAY_SIZE(props); i++) {
+		if (strcmp(propname, props[i]) == 0)
+			break;
+	}
+
+	return (i != ARRAY_SIZE(props));
+}
+
+// FIXME: manpage
+static void
+read_property(const char *propname)
+{
+	di_prop_t prop = DI_PROP_NIL;
+	di_node_t root_node;
+	bool show_all = strcmp(propname, "all") == 0;
+
+	if (!show_all && !valid_propname(propname))
+		errx(EXIT_FAILURE, _("unknown CPU property %s"), propname);
+
+	if ((root_node = di_init("/", DINFOPROP)) == NULL)
+		err(EXIT_FAILURE, _("failed to read root node"));
+
+	while ((prop = di_prop_sys_next(root_node, prop)) != DI_PROP_NIL) {
+		const char *name = di_prop_name(prop);
+		char *val;
+		int nr_vals;
+
+		if (!valid_propname(name))
+			continue;
+
+		if (!show_all && strcmp(di_prop_name(prop), propname) != 0)
+			continue;
+
+		if ((nr_vals = di_prop_strings(prop, &val)) < 1) {
+			err(EXIT_FAILURE,
+			    _("error reading property %s"), name);
+		} else if (nr_vals != 1) {
+			errx(EXIT_FAILURE, _("invalid property %s"), name);
+		}
+
+		printf("%s=%s\n", name, val);
+
+		if (!show_all)
+			exit(EXIT_SUCCESS);
+	}
+
+	if (!show_all)
+		errx(EXIT_FAILURE, _("property %s was not found"), propname);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -445,6 +514,7 @@ main(int argc, char **argv)
 	char		*s;
 	int		nspec;
 	int		optc;
+	const char	*opt_r = NULL;
 	int		opt_s = 0;
 	int		opt_p = 0;
 	int		opt_v = 0;
@@ -606,13 +676,16 @@ nocpuid:
 
 	nspec = 0;
 
-	while ((optc = getopt(argc, argv, "pvs")) != EOF) {
+	while ((optc = getopt(argc, argv, "pr:sv")) != EOF) {
 		switch (optc) {
-		case 's':
-			opt_s = 1;
-			break;
 		case 'p':
 			opt_p = 1;
+			break;
+		case 'r':
+			opt_r = optarg;
+			break;
+		case 's':
+			opt_s = 1;
 			break;
 		case 'v':
 			opt_v = 1;
@@ -620,6 +693,16 @@ nocpuid:
 		default:
 			usage(NULL);
 		}
+	}
+
+	if (opt_r != NULL) {
+		if (optind != argc)
+			usage(_("cannot specify CPUs with -r"));
+		if (opt_p || opt_s || opt_v)
+			usage(_("cannot specify other arguments with -r"));
+
+		read_property(opt_r);
+		return (EXIT_SUCCESS);
 	}
 
 	while (optind < argc) {

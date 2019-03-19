@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef	_SYS_HT_H
@@ -24,6 +24,10 @@ extern "C" {
 #endif
 
 #define	ht_init() {}
+#define	ht_late_init() {}
+#define	ht_disable() (ENOTSUP)
+#define	ht_can_enable(c, f) (0)
+#define	ht_force_enabled() {}
 
 #define	ht_should_run(t, c) (B_TRUE)
 #define	ht_adjust_cpu_score(t, c, p) (p)

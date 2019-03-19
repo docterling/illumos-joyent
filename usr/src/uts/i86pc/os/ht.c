@@ -104,6 +104,13 @@
  * Used when scoring other CPUs in disp_lowpri_cpu().  If we shouldn't run here,
  * we'll add a small penalty to the score.  This also makes sure a VCPU thread
  * migration behaves properly.
+ *
+ *
+ * ht_init() / ht_late_init()
+ *
+ * Set up HT handling. If ht_boot_disable is set, ht_late_init(), which runs
+ * late enough to be able to do so, will offline and mark CPU_DISABLED all the
+ * siblings. ht_disable() can also be called after boot via psradm -Ha.
  */
 
 #include <sys/archsystm.h>
@@ -116,6 +123,10 @@
 #include <sys/cmn_err.h>
 #include <sys/sysmacros.h>
 #include <sys/x86_archext.h>
+#include <sys/esunddi.h>
+#include <sys/promif.h>
+#include <sys/policy.h>
+#include <sys/ht.h>
 
 #define	CS_SHIFT (8)
 #define	CS_MASK ((1 << CS_SHIFT) - 1)
@@ -153,65 +164,15 @@ int ht_exclusion = 1;
  */
 clock_t ht_acquire_wait_time = 64;
 
-static cpu_t *
-ht_find_sibling(cpu_t *cp)
-{
-	for (uint_t i = 0; i < GROUP_SIZE(&cp->cpu_pg->cmt_pgs); i++) {
-		pg_cmt_t *pg = GROUP_ACCESS(&cp->cpu_pg->cmt_pgs, i);
-		group_t *cg = &pg->cmt_pg.pghw_pg.pg_cpus;
-
-		if (pg->cmt_pg.pghw_hw != PGHW_IPIPE)
-			continue;
-
-		if (GROUP_SIZE(cg) == 1)
-			break;
-
-		VERIFY3U(GROUP_SIZE(cg), ==, 2);
-
-		if (GROUP_ACCESS(cg, 0) != cp)
-			return (GROUP_ACCESS(cg, 0));
-
-		VERIFY3P(GROUP_ACCESS(cg, 1), !=, cp);
-
-		return (GROUP_ACCESS(cg, 1));
-	}
-
-	return (NULL);
-}
+/*
+ * Did we request a disable of HT at boot time?
+ */
+int ht_boot_disable;
 
 /*
- * Initialize HT links.  We have to be careful here not to race with
- * ht_begin/end_intr(), which also complicates trying to do this initialization
- * from a cross-call; hence the slightly odd approach below.
+ * Whether HT is enabled.
  */
-void
-ht_init(void)
-{
-	cpu_t *scp = CPU;
-	cpu_t *cp = scp;
-	ulong_t flags;
-
-	if (!ht_exclusion)
-		return;
-
-	mutex_enter(&cpu_lock);
-
-	do {
-		thread_affinity_set(curthread, cp->cpu_id);
-		flags = intr_clear();
-
-		cp->cpu_m.mcpu_ht.ch_intr_depth = 0;
-		cp->cpu_m.mcpu_ht.ch_state = CS_MK(CM_THREAD, GLOBAL_ZONEID);
-		cp->cpu_m.mcpu_ht.ch_sibstate = CS_MK(CM_THREAD, GLOBAL_ZONEID);
-		ASSERT3P(cp->cpu_m.mcpu_ht.ch_sib, ==, NULL);
-		cp->cpu_m.mcpu_ht.ch_sib = ht_find_sibling(cp);
-
-		intr_restore(flags);
-		thread_affinity_clear(curthread);
-	} while ((cp = cp->cpu_next_onln) != scp);
-
-	mutex_exit(&cpu_lock);
-}
+int ht_enabled = 1;
 
 /*
  * We're adding an interrupt handler of some kind at the given PIL.  If this
@@ -610,4 +571,189 @@ ht_adjust_cpu_score(kthread_t *t, struct cpu *cp, pri_t score)
 		return ((v.v_maxsyspri + 1) * 2);
 
 	return (score + 1);
+}
+
+static void
+set_ht_prop(void)
+{
+	(void) e_ddi_prop_update_string(DDI_DEV_T_NONE, ddi_root_node(),
+	    "ht_enabled", ht_enabled ? "true" : "false");
+}
+
+static cpu_t *
+ht_find_sibling(cpu_t *cp)
+{
+	for (uint_t i = 0; i < GROUP_SIZE(&cp->cpu_pg->cmt_pgs); i++) {
+		pg_cmt_t *pg = GROUP_ACCESS(&cp->cpu_pg->cmt_pgs, i);
+		group_t *cg = &pg->cmt_pg.pghw_pg.pg_cpus;
+
+		if (pg->cmt_pg.pghw_hw != PGHW_IPIPE)
+			continue;
+
+		if (GROUP_SIZE(cg) == 1)
+			break;
+
+		VERIFY3U(GROUP_SIZE(cg), ==, 2);
+
+		if (GROUP_ACCESS(cg, 0) != cp)
+			return (GROUP_ACCESS(cg, 0));
+
+		VERIFY3P(GROUP_ACCESS(cg, 1), !=, cp);
+
+		return (GROUP_ACCESS(cg, 1));
+	}
+
+	return (NULL);
+}
+
+/*
+ * Offline all siblings and mark as CPU_DISABLED. Note that any siblings that
+ * can't be offlined (if it would leave an empty partition, or it's a spare, or
+ * whatever) will fail the whole operation.
+ */
+int
+ht_disable(void)
+{
+	int error = 0;
+
+	ASSERT(MUTEX_HELD(&cpu_lock));
+
+	if (secpolicy_ponline(CRED()) != 0)
+		return (EPERM);
+
+	if (!ht_enabled)
+		return (0);
+
+	for (size_t i = 0; i < NCPU; i++) {
+		cpu_t *sib;
+		cpu_t *cp;
+
+		if ((cp = cpu_get(i)) == NULL)
+			continue;
+
+		/* NB: don't have ->mcpu_ht yet. */
+		if ((sib = ht_find_sibling(cp)) == NULL)
+			continue;
+
+		if (cp->cpu_id < sib->cpu_id)
+			continue;
+
+		if (cp->cpu_flags & CPU_DISABLED) {
+			VERIFY(cp->cpu_flags & CPU_OFFLINE);
+			continue;
+		}
+
+		if (cp->cpu_flags & (CPU_FAULTED | CPU_SPARE)) {
+			error = EINVAL;
+			break;
+		}
+
+		if ((cp->cpu_flags & (CPU_READY | CPU_OFFLINE)) != CPU_READY) {
+			cp->cpu_flags |= CPU_DISABLED;
+			continue;
+		}
+
+		if ((error = cpu_offline(cp, CPU_FORCED)) != 0)
+			break;
+
+		cp->cpu_flags |= CPU_DISABLED;
+		cpu_set_state(cp);
+	}
+
+	if (error != 0)
+		return (error);
+
+	ht_enabled = 0;
+	set_ht_prop();
+	cmn_err(CE_NOTE, "!HT (hyper-threading) explicitly disabled.");
+	return (0);
+}
+
+boolean_t
+ht_can_enable(cpu_t *cp, int flags)
+{
+	VERIFY(cp->cpu_flags & CPU_DISABLED);
+
+	return (!ht_boot_disable && (flags & CPU_FORCED));
+}
+
+/*
+ * If we force-onlined a CPU_DISABLED CPU, then we can no longer consider the
+ * system to be HT-disabled in toto.
+ */
+void
+ht_force_enabled(void)
+{
+	VERIFY(!ht_boot_disable);
+
+	if (!ht_enabled)
+		cmn_err(CE_NOTE, "!Disabled HT sibling forced on-line.");
+
+	ht_enabled = 1;
+	set_ht_prop();
+}
+
+/*
+ * Initialize HT links.  We have to be careful here not to race with
+ * ht_begin/end_intr(), which also complicates trying to do this initialization
+ * from a cross-call; hence the slightly odd approach below.
+ *
+ * If we're going to disable HT via ht_late_init(), we will avoid paying the
+ * price here at all (we can't do it here since we're still too early in
+ * main()).
+ */
+void
+ht_init(void)
+{
+	cpu_t *scp = CPU;
+	cpu_t *cp = scp;
+	ulong_t flags;
+
+	if (!ht_exclusion || ht_boot_disable)
+		return;
+
+	mutex_enter(&cpu_lock);
+
+	do {
+		thread_affinity_set(curthread, cp->cpu_id);
+		flags = intr_clear();
+
+		cp->cpu_m.mcpu_ht.ch_intr_depth = 0;
+		cp->cpu_m.mcpu_ht.ch_state = CS_MK(CM_THREAD, GLOBAL_ZONEID);
+		cp->cpu_m.mcpu_ht.ch_sibstate = CS_MK(CM_THREAD, GLOBAL_ZONEID);
+		ASSERT3P(cp->cpu_m.mcpu_ht.ch_sib, ==, NULL);
+		cp->cpu_m.mcpu_ht.ch_sib = ht_find_sibling(cp);
+
+		intr_restore(flags);
+		thread_affinity_clear(curthread);
+	} while ((cp = cp->cpu_next_onln) != scp);
+
+	mutex_exit(&cpu_lock);
+}
+
+void
+ht_late_init(void)
+{
+	int err;
+
+	if (!ht_boot_disable) {
+		set_ht_prop();
+		cmn_err(CE_NOTE, "!HT enabled\n");
+		return;
+	}
+
+	mutex_enter(&cpu_lock);
+
+	err = ht_disable();
+
+	/*
+	 * We're early enough in boot that nothing should have stopped us from
+	 * offlining the siblings, and we didn't set up the infrastructure for
+	 * L1TF.
+	 */
+	if (err) {
+		cmn_err(CE_PANIC, "ht_disable() failed with %d", err);
+	}
+
+	mutex_exit(&cpu_lock);
 }

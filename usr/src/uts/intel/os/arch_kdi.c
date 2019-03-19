@@ -22,7 +22,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
  */
 
 /*
@@ -45,6 +45,8 @@
 #include <sys/kobj.h>
 #include <sys/kobj_impl.h>
 #include <sys/clock_impl.h>
+
+int kmdb_on_nmi;
 
 static void
 kdi_system_claim(void)

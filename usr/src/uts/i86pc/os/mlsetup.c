@@ -65,6 +65,7 @@
 #include <sys/apic_common.h>
 #include <sys/bootvfs.h>
 #include <sys/tsc.h>
+#include <sys/ht.h>
 #ifdef __xpv
 #include <sys/hypervisor.h>
 #else
@@ -185,6 +186,17 @@ mlsetup(struct regs *rp)
 	} else if (kpti_enable != 1) {
 		x86_use_pcid = 0;
 	}
+
+	/*
+	 * While we don't need to check this until later, we might as well do it
+	 * here.
+	 */
+	if (bootprop_getstr("ht_enabled", prop_str, sizeof (prop_str)) == 0) {
+		if (strcasecmp(prop_str, "false") == 0 ||
+		    strcmp(prop_str, "0") == 0)
+			ht_boot_disable = 1;
+	}
+
 #endif
 
 	/*
