@@ -139,10 +139,11 @@ ipf_cfwev_report(cfwev_t *event)
  * In the future, maybe lock-then-callback, even with a request for multiple
  * events?
  *
- * Also for now, if empty, cv_wait().
+ * Also for now, if empty, either cv_wait() or return B_FALSE, depending on
+ * "block".
  */
-void
-ipf_cfwev_consume(cfwev_t *event)
+boolean_t
+ipf_cfwev_consume(cfwev_t *event, boolean_t block)
 {
 	mutex_enter(&cfw_ringlock);
 
@@ -150,13 +151,118 @@ ipf_cfwev_consume(cfwev_t *event)
 	 * Alternatives, use if and return B_FALSE or something instead
 	 * of cv_wait()ing.
 	 */
-	while (cfw_ringstart == cfw_ringend && !cfw_ringfull)
-		cv_wait(&cfw_ringcv, &cfw_ringlock);
-	*event = cfw_evring[cfw_ringend];
-	cfw_ringend++;
-	cfw_ringend &= IPF_CFW_RING_MASK;
+	while ((cfw_ringstart == cfw_ringend) && !cfw_ringfull) {
+		if (block) {
+			cv_wait(&cfw_ringcv, &cfw_ringlock);
+		} else {
+			mutex_exit(&cfw_ringlock);
+			return (B_FALSE);
+		}
+	}
+
+	*event = cfw_evring[cfw_ringstart];
+	cfw_ringstart++;
+	cfw_ringstart &= IPF_CFW_RING_MASK;
 	cfw_ringfull = B_FALSE;
 	mutex_exit(&cfw_ringlock);
+	return (B_TRUE);
+}
+
+/*
+ * More sophisticated access to multiple CFW events that can allow copying
+ * straight from the ring buffer up to userland.  Requires a callback (which
+ * could call uiomove() directly, OR to a local still-in-kernel buffer) that
+ * must do the data copying-out.
+ *
+ * Callback function is of the form:
+ *
+ *	int cfw_many_cb(cfwev_t *evptr, int num_avail, void *cbarg);
+ *
+ * The function must return how many events got consumed, which MUST be <= the
+ * number available.  The function must ALSO UNDERSTAND that cfw_ringlock is
+ * held during this time.  The function may be called more than once, if the
+ * available buffers wrap-around OR "block" is set and we don't have enough
+ * buffers.  If any callback returns 0, exit the function with however many
+ * were consumed.
+ *
+ * This function, like the callback, returns the number of events *CONSUMED*.
+ */
+uint_t
+ipf_cfwev_consume_many(uint_t num_requested, boolean_t block,
+    cfwmanycb_t cfw_many_cb, void *cbarg)
+{
+	uint_t consumed = 0, cb_consumed, contig_size;
+
+	mutex_enter(&cfw_ringlock);
+	/*
+	 * Can goto here (ewww) if caller wants blocking. NOTE that
+	 * num_requested may have been decremented and consumed may have been
+	 * incremented if we arrive here via a goto after a cv_wait.
+	 */
+from_the_top:
+	if (cfw_ringstart > cfw_ringend || cfw_ringfull)
+		contig_size = IPF_CFW_RING_BUFS - cfw_ringstart;
+	else if (cfw_ringstart < cfw_ringend)
+		contig_size = cfw_ringend - cfw_ringstart;
+	else if (block) {
+		/* Nothing to consume, wait... */
+		cv_wait(&cfw_ringcv, &cfw_ringlock);
+		goto from_the_top;
+	} else {
+		/* Nothing to consume, return! */
+		goto bail;
+	}
+
+	ASSERT(contig_size + cfw_ringstart == cfw_ringend ||
+	    contig_size + cfw_ringstart == IPF_CFW_RING_BUFS);
+
+	if (num_requested < contig_size)
+		contig_size = num_requested;
+
+	cb_consumed = cfw_many_cb(&(cfw_evring[cfw_ringstart]), contig_size,
+	    cbarg);
+	ASSERT(cb_consumed <= contig_size);
+	cfw_ringstart += cb_consumed;
+	consumed += cb_consumed;
+	cfw_ringfull = (cfw_ringfull && cb_consumed > 0);
+	if (cb_consumed < contig_size) {
+		/* Caller clearly had a problem. Reality check and bail. */
+		ASSERT((cfw_ringstart & IPF_CFW_RING_MASK) == cfw_ringstart);
+		goto bail;
+	}
+	cfw_ringstart &= IPF_CFW_RING_MASK;	/* In case of wraparound. */
+	num_requested -= contig_size;
+
+	if (num_requested > 0 && cfw_ringstart != cfw_ringend) {
+		/* We must have wrapped around the end of the buffer! */
+		ASSERT(cfw_ringstart == 0);
+		ASSERT(!cfw_ringfull);
+		contig_size = cfw_ringend;
+		if (num_requested < contig_size)
+			contig_size = num_requested;
+		cb_consumed = cfw_many_cb(&(cfw_evring[cfw_ringstart]),
+		    contig_size, cbarg);
+		cfw_ringstart += cb_consumed;
+		consumed += cb_consumed;
+		if (cb_consumed < contig_size) {
+			/*
+			 * Caller clearly had a problem. Reality check and
+			 * bail.
+			 */
+			ASSERT(cfw_ringend > cfw_ringstart);
+			goto bail;
+		}
+	}
+
+	if (num_requested > 0 && block) {
+		/* Nothing to consume, wait */
+		cv_wait(&cfw_ringcv, &cfw_ringlock);
+		goto from_the_top;
+	}
+
+bail:
+	mutex_exit(&cfw_ringlock);
+	return (consumed);
 }
 
 static inline zoneid_t

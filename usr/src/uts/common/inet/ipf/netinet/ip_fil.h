@@ -1567,10 +1567,14 @@ extern boolean_t ipf_cfwlog_enabled;
 struct ipstate;	/* Ugggh. */
 extern void ipf_log_cfwlog __P((struct ipstate *, uint_t, ipf_stack_t *));
 extern void ipf_block_cfwlog __P((frentry_t *, fr_info_t *, ipf_stack_t *));
+/* XXX KEBE SAYS MAYBE a by-rule property some day. */
 #define	IFS_CFWLOG(ifs) ((ifs)->ifs_gz_controlled && ipf_cfwlog_enabled)
 struct cfwev_s;	/* See ipf_cfw.h */
-extern void ipf_cfwev_consume __P((struct cfwev_s *));
-
+extern boolean_t ipf_cfwev_consume __P((struct cfwev_s *, boolean_t));
+/* See cfw.c's ipf_cfwev_consume_many() for details. */
+typedef uint_t (*cfwmanycb_t) __P((struct cfwev_s *, uint_t, void *));
+extern uint_t
+	ipf_cfwev_consume_many __P((uint_t, boolean_t, cfwmanycb_t, void *));
 
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));
 extern	int		fr_copytolog __P((int, char *, int));
