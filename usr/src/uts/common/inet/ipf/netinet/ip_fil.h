@@ -1568,6 +1568,8 @@ struct ipstate;	/* Ugggh. */
 extern void ipf_log_cfwlog __P((struct ipstate *, uint_t, ipf_stack_t *));
 extern void ipf_block_cfwlog __P((frentry_t *, fr_info_t *, ipf_stack_t *));
 #define	IFS_CFWLOG(ifs) ((ifs)->ifs_gz_controlled && ipf_cfwlog_enabled)
+struct cfwev_s;	/* See ipf_cfw.h */
+extern void ipf_cfwev_consume __P((struct cfwev_s *));
 
 
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));

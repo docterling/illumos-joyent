@@ -74,7 +74,91 @@
  */
 boolean_t ipf_cfwlog_enabled;
 
+/*
+ * Because ipf's test tools in $SRC/cmd insert all of these files, we need to
+ * stub out what we can vs. drag in even more headers and who knows what else.
+ */
 #ifdef _KERNEL
+
+/* XXX KEBE SAYS PUT A RING (buffer) ON IT! */
+
+/*
+ * CFW event ring buffer.  Remember, this is for ALL ZONES because only a
+ * global-zone event-reader will be consuming these.  In other words, it's
+ * not something to instantiate per-netstack.
+ */
+
+/*
+ * We may want to get more sophisticated and performant (e.g. per-processor),
+ * but for now keep the ring buffer simple and stupid.
+ */
+
+/* Must be a power of 2, to be bitmaskable, and must be countable by a uint_t */
+
+#define	IPF_CFW_RING_BUFS	1024
+#define	IPF_CFW_RING_MASK (IPF_CFW_RING_BUFS - 1)
+
+/* Assume C's init-to-zero is sufficient for these types... */
+static kmutex_t cfw_ringlock;
+static kcondvar_t cfw_ringcv;
+
+static cfwev_t cfw_evring[IPF_CFW_RING_BUFS];
+/* If these are equal, we're either empty or full. */
+static uint_t cfw_ringstart, cfw_ringend;
+static boolean_t cfw_ringfull;	/* Tell the difference here! */
+static uint64_t cfw_evdrops;
+
+/*
+ * For now redundant-copy. In the future, MAYBE pass parms and do the copying
+ * here?
+ */
+static void
+ipf_cfwev_report(cfwev_t *event)
+{
+	mutex_enter(&cfw_ringlock);
+	if (cfw_ringfull) {
+		cfw_ringstart++;
+		cfw_ringstart &= IPF_CFW_RING_MASK;
+		cfw_ringend++;
+		cfw_ringend &= IPF_CFW_RING_MASK;
+		DTRACE_PROBE(ipf__cfw__evdrop);
+		cfw_evdrops++;
+		cfw_evring[cfw_ringend] = *event;
+	} else {
+		cfw_evring[cfw_ringend] = *event;
+		cfw_ringend++;
+		cfw_ringend &= IPF_CFW_RING_MASK;
+		cfw_ringfull = (cfw_ringend == cfw_ringstart);
+	}
+	cv_broadcast(&cfw_ringcv);
+	mutex_exit(&cfw_ringlock);
+}
+
+/*
+ * For now, merely copy one from the ring buffer into what's provided.
+ * In the future, maybe lock-then-callback, even with a request for multiple
+ * events?
+ *
+ * Also for now, if empty, cv_wait().
+ */
+void
+ipf_cfwev_consume(cfwev_t *event)
+{
+	mutex_enter(&cfw_ringlock);
+
+	/*
+	 * Alternatives, use if and return B_FALSE or something instead
+	 * of cv_wait()ing.
+	 */
+	while (cfw_ringstart == cfw_ringend && !cfw_ringfull)
+		cv_wait(&cfw_ringcv, &cfw_ringlock);
+	*event = cfw_evring[cfw_ringend];
+	cfw_ringend++;
+	cfw_ringend &= IPF_CFW_RING_MASK;
+	cfw_ringfull = B_FALSE;
+	mutex_exit(&cfw_ringlock);
+}
+
 static inline zoneid_t
 ifs_to_did(ipf_stack_t *ifs)
 {
@@ -148,7 +232,8 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	event.cfwev_ruleid = fin->fin_rule;
 	memcpy(event.cfwev_ruleuuid, fr->fr_uuid, sizeof (uuid_t));
 
-	DTRACE_PROBE1(ipf__cfw__block, cfwev_t *, &event);
+	ipf_cfwev_report(&event);
+	/* DTRACE_PROBE1(ipf__cfw__block, cfwev_t *, &event); */
 }
 
 /*
@@ -224,8 +309,8 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 	event.cfwev_ruleid = is->is_rulen;
 	memcpy(event.cfwev_ruleuuid, is->is_uuid, sizeof (uuid_t));
 
-	/* XXX KEBE SAYS Then we do something with it. */
-	DTRACE_PROBE1(ipf__cfw__state, cfwev_t *, &event);
+	ipf_cfwev_report(&event);
+	/* DTRACE_PROBE1(ipf__cfw__state, cfwev_t *, &event); */
 }
 
 #else

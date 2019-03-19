@@ -25,6 +25,13 @@
 # Copyright 2018 Joyent, Inc. All rights reserved
 #
 
+cfw_evdrops
+cfw_evring
+cfw_ringcv
+cfw_ringend
+cfw_ringfull
+cfw_ringlock
+cfw_ringstart
 fr_availfuncs
 fr_features
 fr_objbytes
