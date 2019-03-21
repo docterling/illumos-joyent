@@ -116,7 +116,7 @@ static	void	ipf_stack_shutdown __P((const netid_t, void *));
 static	int	ipf_property_g_update __P((dev_info_t *));
 static	char	*ipf_devfiles[] = { IPL_NAME, IPNAT_NAME, IPSTATE_NAME,
 				    IPAUTH_NAME, IPSYNC_NAME, IPSCAN_NAME,
-				    IPLOOKUP_NAME, NULL };
+				    IPLOOKUP_NAME, IPFEV_NAME, NULL };
 extern void 	*ipf_state;	/* DDI state */
 extern vmem_t	*ipf_minor;	/* minor number arena */
 

@@ -26,6 +26,7 @@
 #
 
 cfw_evdrops
+cfw_evreports
 cfw_evring
 cfw_ringcv
 cfw_ringend

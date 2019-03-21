@@ -61,6 +61,9 @@
 #endif
 
 #include "netinet/ipf_cfw.h"
+#include <sys/file.h>
+#include <sys/uio.h>
+#include <sys/cred.h>
 
 /*
  * cfw == Cloud Firewall ==> routines for a global-zone data collector about
@@ -106,6 +109,7 @@ static cfwev_t cfw_evring[IPF_CFW_RING_BUFS];
 /* If these are equal, we're either empty or full. */
 static uint_t cfw_ringstart, cfw_ringend;
 static boolean_t cfw_ringfull;	/* Tell the difference here! */
+static uint64_t cfw_evreports;
 static uint64_t cfw_evdrops;
 
 /*
@@ -130,6 +134,7 @@ ipf_cfwev_report(cfwev_t *event)
 		cfw_ringend &= IPF_CFW_RING_MASK;
 		cfw_ringfull = (cfw_ringend == cfw_ringstart);
 	}
+	cfw_evreports++;
 	cv_broadcast(&cfw_ringcv);
 	mutex_exit(&cfw_ringlock);
 }
@@ -148,13 +153,10 @@ ipf_cfwev_consume(cfwev_t *event, boolean_t block)
 	mutex_enter(&cfw_ringlock);
 
 	/*
-	 * Alternatives, use if and return B_FALSE or something instead
-	 * of cv_wait()ing.
+	 * Return B_FALSE if non-block and no data, OR if we receive a signal.
 	 */
 	while ((cfw_ringstart == cfw_ringend) && !cfw_ringfull) {
-		if (block) {
-			cv_wait(&cfw_ringcv, &cfw_ringlock);
-		} else {
+		if (!block || !cv_wait_sig(&cfw_ringcv, &cfw_ringlock)) {
 			mutex_exit(&cfw_ringlock);
 			return (B_FALSE);
 		}
@@ -176,7 +178,7 @@ ipf_cfwev_consume(cfwev_t *event, boolean_t block)
  *
  * Callback function is of the form:
  *
- *	int cfw_many_cb(cfwev_t *evptr, int num_avail, void *cbarg);
+ *	uint_t cfw_many_cb(cfwev_t *evptr, int num_avail, void *cbarg);
  *
  * The function must return how many events got consumed, which MUST be <= the
  * number available.  The function must ALSO UNDERSTAND that cfw_ringlock is
@@ -204,12 +206,11 @@ from_the_top:
 		contig_size = IPF_CFW_RING_BUFS - cfw_ringstart;
 	else if (cfw_ringstart < cfw_ringend)
 		contig_size = cfw_ringend - cfw_ringstart;
-	else if (block) {
-		/* Nothing to consume, wait... */
-		cv_wait(&cfw_ringcv, &cfw_ringlock);
+	else if (block && cv_wait_sig(&cfw_ringcv, &cfw_ringlock)) {
+		/* Maybe something to consume now, try again. */
 		goto from_the_top;
 	} else {
-		/* Nothing to consume, return! */
+		/* Nothing (more) to consume, return! */
 		goto bail;
 	}
 
@@ -256,8 +257,9 @@ from_the_top:
 
 	if (num_requested > 0 && block) {
 		/* Nothing to consume, wait */
-		cv_wait(&cfw_ringcv, &cfw_ringlock);
-		goto from_the_top;
+		if (cv_wait_sig(&cfw_ringcv, &cfw_ringlock))
+			goto from_the_top;
+		/* Else bail with what we got... */
 	}
 
 bail:
@@ -307,6 +309,7 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 		return;
 
 	event.cfwev_type = CFWEV_BLOCK;
+	event.cfwev_length = sizeof (event);
 	/*
 	 * IPF code elsewhere does the cheesy single-flag check, even thogh
 	 * there are two flags in a rule (one for in, one for out).
@@ -379,6 +382,7 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 	 * IPF code elsewhere does the cheesy single-flag check, even thogh
 	 * there are two flags in a rule (one for in, one for out).
 	 */
+	event.cfwev_length = sizeof (event);
 	event.cfwev_direction = (is->is_rule->fr_flags & FR_INQUE) ?
 	    CFWDIR_IN : CFWDIR_OUT;
 	event.cfwev_protocol = is->is_p;
@@ -417,6 +421,108 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 
 	ipf_cfwev_report(&event);
 	/* DTRACE_PROBE1(ipf__cfw__state, cfwev_t *, &event); */
+}
+
+typedef struct uio_error_s {
+	struct uio *ue_uio;
+	int ue_error;
+} uio_error_t;
+
+static uint_t
+cfwlog_read_manycb(cfwev_t *evptr, uint_t num_avail, void *cbarg)
+{
+	uio_error_t *ue = (uio_error_t *)cbarg;
+
+	ASSERT(MUTEX_HELD(&cfw_ringlock));
+
+	/* XXX KEBE ASKS Should this be an ASSERT()? */
+	if (ue->ue_error != 0)
+		return (0);
+
+	ue->ue_error = uiomove((caddr_t)evptr, num_avail * sizeof (*evptr),
+	    UIO_READ, ue->ue_uio);
+	/* 0 means error indication. */
+	if (ue->ue_error)
+		return (0);
+
+	return (num_avail);
+}
+
+/* ARGSUSED */
+int
+ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
+{
+	uint_t requested, consumed;
+#if 0
+	int error;
+#else
+	uio_error_t ue = {uio, 0};
+#endif
+	boolean_t block;
+
+	if (uio->uio_resid == 0)
+		return (0);
+	if (uio->uio_resid < sizeof (cfwev_t))
+		return (EINVAL);
+	/* XXX KEBE ASKS: Check for resid being too big?!? */
+
+	block = ((uio->uio_fmode & (FNDELAY | FNONBLOCK)) == 0);
+	requested = uio->uio_resid / sizeof (cfwev_t);
+	ASSERT(requested > 0);
+
+#if 0
+	consumed = 0;
+	/* One-event-at-a-time way of doing it... */
+	while (uio->uio_resid >= sizeof (cfwev_t)) {
+		cfwev_t event;
+		boolean_t keep_going;
+
+		keep_going = ipf_cfwev_consume(&event, block);
+		if (!keep_going) {
+			if (block)
+				error = EINTR;
+			else if (consumed == 0)
+				error = EWOULDBLOCK;
+			break;
+		}
+		consumed++;
+		error = uiomove((caddr_t)&event, sizeof (event), UIO_READ, uio);
+		if (error != 0) {
+			if (consumed > 0) {
+				mutex_enter(&cfw_ringlock);
+				cfw_evdrops += consumed;
+				mutex_exit(&cfw_ringlock);
+			}
+			break;
+		}
+	}
+
+	ASSERT(error != 0 || !block || consumed == requested);
+	return (error);
+#else
+	/*
+	 * As stated earlier, ipf_cfwev_consume_many() takes a callback.
+	 * The callback may be called multiple times before we return.
+	 * The callback will execute uiomove().
+	 */
+	consumed = ipf_cfwev_consume_many(requested, block, cfwlog_read_manycb,
+	    &ue);
+	ASSERT3U(consumed, <=, requested);
+	if (!block && consumed == 0 && ue.ue_error == 0) {
+		/* No data available. */
+		ue.ue_error = EWOULDBLOCK;
+	} else if (ue.ue_error != 0 || (block && consumed != requested)) {
+		/* We had a problem... */
+		mutex_enter(&cfw_ringlock);
+		cfw_evdrops += consumed;
+		mutex_exit(&cfw_ringlock);
+
+		/* Cover cv_wait_sig() receiving a signal. */
+		if (ue.ue_error == 0)
+			ue.ue_error = EINTR;
+	}
+	return (ue.ue_error);
+#endif
 }
 
 #else

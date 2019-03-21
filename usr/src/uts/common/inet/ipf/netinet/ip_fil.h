@@ -933,6 +933,7 @@ typedef	struct	ipflog	{
 #define	IPSYNC_NAME	"/dev/ipsync"
 #define	IPSCAN_NAME	"/dev/ipscan"
 #define	IPLOOKUP_NAME	"/dev/iplookup"
+#define	IPFEV_NAME	"/dev/ipfev"
 
 #define	IPL_LOGIPF	0	/* Minor device #'s for accessing logs */
 #define	IPL_LOGNAT	1
@@ -941,8 +942,9 @@ typedef	struct	ipflog	{
 #define	IPL_LOGSYNC	4
 #define	IPL_LOGSCAN	5
 #define	IPL_LOGLOOKUP	6
-#define	IPL_LOGCOUNT	7
-#define	IPL_LOGMAX	7
+#define	IPL_LOGEV	7
+#define	IPL_LOGCOUNT	8
+#define	IPL_LOGMAX	8
 #define	IPL_LOGSIZE	(IPL_LOGMAX + 1)
 #define	IPL_LOGALL	-1
 #define	IPL_LOGNONE	-2
@@ -1575,6 +1577,7 @@ extern boolean_t ipf_cfwev_consume __P((struct cfwev_s *, boolean_t));
 typedef uint_t (*cfwmanycb_t) __P((struct cfwev_s *, uint_t, void *));
 extern uint_t
 	ipf_cfwev_consume_many __P((uint_t, boolean_t, cfwmanycb_t, void *));
+extern int ipf_cfwlog_read __P((dev_t, struct uio *, struct cred *));
 
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));
 extern	int		fr_copytolog __P((int, char *, int));
