@@ -718,8 +718,9 @@ zfs_crypto_get_encryption_root(zfs_handle_t *zhp, boolean_t *is_encroot,
 }
 
 int
-zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
-    nvlist_t *pool_props, uint8_t **wkeydata_out, uint_t *wkeylen_out)
+zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, zfs_type_t type,
+    nvlist_t *props, nvlist_t *pool_props, uint8_t **wkeydata_out,
+    uint_t *wkeylen_out)
 {
 	int ret;
 	char errbuf[1024];
