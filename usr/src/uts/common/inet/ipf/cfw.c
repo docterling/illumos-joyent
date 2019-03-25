@@ -318,9 +318,10 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	    CFWDIR_IN : CFWDIR_OUT;
 
 	event.cfwev_protocol = fin->fin_p;
+	/* NOTE: fin_*port is in host/native order. */
 	/* XXX KEBE SAYS ICMP stuff should fall in here too. */
-	event.cfwev_sport = fin->fin_sport;
-	event.cfwev_dport = fin->fin_dport;
+	event.cfwev_sport = htons(fin->fin_sport);
+	event.cfwev_dport = htons(fin->fin_dport);
 
 	if (fin->fin_v == IPV4_VERSION) {
 		IN6_INADDR_TO_V4MAPPED(&fin->fin_src, &event.cfwev_saddr);
@@ -338,6 +339,7 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	 */
 	uniqtime(&event.cfwev_tstamp);
 	event.cfwev_zonedid = ifs_to_did(ifs);
+	ASSERT(fin->fin_rule <= 0xffff);	/* Must fit in uint16_t... */
 	event.cfwev_ruleid = fin->fin_rule;
 	memcpy(event.cfwev_ruleuuid, fr->fr_uuid, sizeof (uuid_t));
 
@@ -389,6 +391,7 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 	switch (is->is_p) {
 	case IPPROTO_TCP:
 	case IPPROTO_UDP:
+		/* NOTE: is_*port is in network order. */
 		event.cfwev_sport = is->is_sport;
 		event.cfwev_dport = is->is_dport;
 		break;
@@ -416,6 +419,7 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 	uniqtime(&event.cfwev_tstamp);
 	event.cfwev_zonedid = ifs_to_did(ifs);
 	/* XXX KEBE ASKS -> good enough? */
+	ASSERT(is->is_rulen <= 0xffff);	/* Must fit in uint16_t... */
 	event.cfwev_ruleid = is->is_rulen;
 	memcpy(event.cfwev_ruleuuid, is->is_uuid, sizeof (uuid_t));
 

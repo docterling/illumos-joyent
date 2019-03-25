@@ -42,20 +42,17 @@
 typedef struct cfwev_s {
 	uint16_t cfwev_type;	/* BEGIN, END, BLOCK */
 	uint16_t cfwev_length;	/* in bytes, so capped to 65535 bytes */
+	zoneid_t cfwev_zonedid;	/* Pullable from ipf_stack_t. */
+
+	uint16_t cfwev_ruleid;	/* Pullable from fr_info_t. */
 	uint8_t cfwev_protocol;	/* IPPROTO_* */
 	/* "direction" informs if src/dst are local/remote or remote/local. */
 	uint8_t cfwev_direction;
-	uint16_t cfwev_reserved;
+	uint16_t cfwev_sport;	/* Source port */
+	uint16_t cfwev_dport;	/* Dest. port */
 
 	in6_addr_t cfwev_saddr;	/* IPv4 addresses are V4MAPPED. */
 	in6_addr_t cfwev_daddr;
-	uint16_t cfwev_sport;	/* Source port */
-	uint16_t cfwev_dport;	/* Dest. port */
-	uint32_t cfwev_reserved2;
-
-
-	zoneid_t cfwev_zonedid;	/* Pullable from ipf_stack_t. */
-	uint32_t cfwev_ruleid;	/* Pullable from fr_info_t. */
 
 	/* XXX KEBE ASKS hrtime for relative time from some start instead? */
 	/*
