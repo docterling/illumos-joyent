@@ -255,12 +255,15 @@ from_the_top:
 		}
 	}
 
+	ASSERT(consumed > 0);
+#if 0
 	if (num_requested > 0 && block) {
 		/* Nothing to consume, wait */
 		if (cv_wait_sig(&cfw_ringcv, &cfw_ringlock))
 			goto from_the_top;
 		/* Else bail with what we got... */
 	}
+#endif
 
 bail:
 	mutex_exit(&cfw_ringlock);
@@ -515,15 +518,15 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 	if (!block && consumed == 0 && ue.ue_error == 0) {
 		/* No data available. */
 		ue.ue_error = EWOULDBLOCK;
-	} else if (ue.ue_error != 0 || (block && consumed != requested)) {
+	} else if (ue.ue_error != 0 || (block && consumed == 0)) {
 		/* We had a problem... */
+		if (ue.ue_error == 0) {
+			/* Cover cv_wait_sig() receiving a signal. */
+			ue.ue_error = EINTR;
+		}
 		mutex_enter(&cfw_ringlock);
 		cfw_evdrops += consumed;
 		mutex_exit(&cfw_ringlock);
-
-		/* Cover cv_wait_sig() receiving a signal. */
-		if (ue.ue_error == 0)
-			ue.ue_error = EINTR;
 	}
 	return (ue.ue_error);
 #endif
