@@ -83,8 +83,6 @@ boolean_t ipf_cfwlog_enabled;
  */
 #ifdef _KERNEL
 
-/* XXX KEBE SAYS PUT A RING (buffer) ON IT! */
-
 /*
  * CFW event ring buffer.  Remember, this is for ALL ZONES because only a
  * global-zone event-reader will be consuming these.  In other words, it's
@@ -201,6 +199,11 @@ ipf_cfwev_consume_many(uint_t num_requested, boolean_t block,
 	 * num_requested may have been decremented and consumed may have been
 	 * incremented if we arrive here via a goto after a cv_wait.
 	 */
+
+	/* Silly reality checks */
+	ASSERT3U(cfw_ringstart, <, IPF_CFW_RING_BUFS);
+	ASSERT3U(cfw_ringend, <, IPF_CFW_RING_BUFS);
+
 from_the_top:
 	if (cfw_ringstart > cfw_ringend || cfw_ringfull)
 		contig_size = IPF_CFW_RING_BUFS - cfw_ringstart;
@@ -225,7 +228,7 @@ from_the_top:
 	ASSERT(cb_consumed <= contig_size);
 	cfw_ringstart += cb_consumed;
 	consumed += cb_consumed;
-	cfw_ringfull = (cfw_ringfull && cb_consumed > 0);
+	cfw_ringfull = (cfw_ringfull && cb_consumed == 0);
 	if (cb_consumed < contig_size) {
 		/* Caller clearly had a problem. Reality check and bail. */
 		ASSERT((cfw_ringstart & IPF_CFW_RING_MASK) == cfw_ringstart);
