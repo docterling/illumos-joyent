@@ -2313,6 +2313,7 @@ f usr/bin/amd64/strings 0555 root bin
 f usr/bin/amd64/truss 0555 root bin
 h usr/bin/amd64/uptime=usr/bin/amd64/w
 f usr/bin/amd64/w 4555 root bin
+f usr/bin/amd64/ztest 4555 root bin
 f usr/bin/amt 0555 root bin
 h usr/bin/apropos=usr/bin/man
 f usr/bin/ar 0555 root bin
@@ -2756,6 +2757,7 @@ f usr/bin/ypwhich 0555 root other
 f usr/bin/zcat 0555 root bin
 f usr/bin/ziostat 0555 root bin
 s usr/bin/zonename=../../sbin/zonename
+h usr/bin/ztest=usr/lib/isaexec
 d usr/ccs 0755 root bin
 d usr/ccs/bin 0755 root bin
 d usr/ccs/bin/amd64 0755 root bin
@@ -3629,7 +3631,6 @@ f usr/include/smbsrv/ndl/winreg.ndl 0644 root bin
 f usr/include/smbsrv/netbios.h 0644 root bin
 f usr/include/smbsrv/netrauth.h 0644 root bin
 f usr/include/smbsrv/nmpipes.h 0644 root bin
-f usr/include/smbsrv/ntaccess.h 0644 root bin
 f usr/include/smbsrv/ntifs.h 0644 root bin
 f usr/include/smbsrv/ntlocale.h 0644 root bin
 f usr/include/smbsrv/smb.h 0644 root bin
@@ -3651,7 +3652,6 @@ f usr/include/smbsrv/smb_xdr.h 0644 root bin
 f usr/include/smbsrv/smbinfo.h 0644 root bin
 f usr/include/smbsrv/string.h 0644 root bin
 f usr/include/smbsrv/svrapi.h 0644 root bin
-f usr/include/smbsrv/winioctl.h 0644 root bin
 f usr/include/smbsrv/winsvc.h 0644 root bin
 f usr/include/smhbaapi.h 0644 root bin
 f usr/include/spawn.h 0644 root bin
@@ -12453,6 +12453,7 @@ f usr/share/man/man1m/zoneadmd.1m 0444 root bin
 f usr/share/man/man1m/zonecfg.1m 0444 root bin
 f usr/share/man/man1m/zpool.1m 0444 root bin
 f usr/share/man/man1m/zstreamdump.1m 0444 root bin
+f usr/share/man/man1m/ztest.1m 0444 root bin
 d usr/share/man/man2 0755 root bin
 f usr/share/man/man2/Intro.2 0444 root bin
 s usr/share/man/man2/_Exit.2=exit.2
@@ -17187,6 +17188,7 @@ f usr/share/man/man3proc/proc_arg_psinfo.3proc 0444 root bin
 s usr/share/man/man3proc/proc_arg_xgrab.3proc=proc_arg_grab.3proc
 s usr/share/man/man3proc/proc_arg_xpsinfo.3proc=proc_arg_psinfo.3proc
 f usr/share/man/man3proc/proc_content2str.3proc 0444 root bin
+s usr/share/man/man3proc/proc_dmodelname.3proc=proc_fltname.3proc
 s usr/share/man/man3proc/proc_finistdio.3proc=proc_initstdio.3proc
 f usr/share/man/man3proc/proc_fltname.3proc 0444 root bin
 f usr/share/man/man3proc/proc_fltset2str.3proc 0444 root bin
@@ -20832,8 +20834,8 @@ f usr/xpg4/bin/basename 0555 root bin
 f usr/xpg4/bin/batch 0555 root bin
 s usr/xpg4/bin/bg=../../bin/alias
 s usr/xpg4/bin/cd=../../bin/alias
-f usr/xpg4/bin/chgrp 0555 root bin
-f usr/xpg4/bin/chown 0555 root bin
+s usr/xpg4/bin/chgrp=../../bin/chgrp
+s usr/xpg4/bin/chown=../../bin/chown
 s usr/xpg4/bin/command=../../bin/alias
 f usr/xpg4/bin/cp 0555 root bin
 f usr/xpg4/bin/crontab 4555 root bin

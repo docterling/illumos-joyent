@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2015 OmniTI Computer Consulting, Inc. All rights reserved.
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  * Copyright 2017 Tegile Systems, Inc.  All rights reserved.
  */
 
@@ -369,7 +369,7 @@
 
 #include "i40e_sw.h"
 
-static char i40e_ident[] = "Intel 10/40Gb Ethernet v1.0.2";
+static char i40e_ident[] = "Intel 10/40Gb Ethernet v1.0.3";
 
 /*
  * The i40e_glock primarily protects the lists below and the i40e_device_t
@@ -2454,6 +2454,7 @@ i40e_chip_start(i40e_t *i40e)
 	i40e_hw_t *hw = &i40e->i40e_hw_space;
 	struct i40e_filter_control_settings filter;
 	int rc;
+	uint8_t err;
 
 	if (((hw->aq.fw_maj_ver == 4) && (hw->aq.fw_min_ver < 33)) ||
 	    (hw->aq.fw_maj_ver < 4)) {
@@ -2468,6 +2469,15 @@ i40e_chip_start(i40e_t *i40e)
 
 	/* Determine hardware state */
 	i40e_get_hw_state(i40e, hw);
+
+	/* For now, we always disable Ethernet Flow Control. */
+	hw->fc.requested_mode = I40E_FC_NONE;
+	rc = i40e_set_fc(hw, &err, B_TRUE);
+	if (rc != I40E_SUCCESS) {
+		i40e_error(i40e, "Setting flow control failed, returned %d"
+		    " with error: 0x%x", rc, err);
+		return (B_FALSE);
+	}
 
 	/* Initialize mac addresses. */
 	i40e_init_macaddrs(i40e, hw);

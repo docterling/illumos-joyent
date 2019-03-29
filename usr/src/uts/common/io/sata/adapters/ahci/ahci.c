@@ -82,6 +82,7 @@
  */
 
 #include <sys/note.h>
+#include <sys/debug.h>
 #include <sys/scsi/scsi.h>
 #include <sys/pci.h>
 #include <sys/disp.h>
@@ -6169,9 +6170,6 @@ ahci_alloc_port_state(ahci_ctl_t *ahci_ctlp, uint8_t port)
 	ahci_portp->ahciport_event_args->ahciea_addrp =
 	    kmem_zalloc(sizeof (ahci_addr_t), KM_SLEEP);
 
-	if (ahci_portp->ahciport_event_args == NULL)
-		goto err_case4;
-
 	/* Initialize the done queue */
 	ahci_portp->ahciport_doneq = NULL;
 	ahci_portp->ahciport_doneqtail = &ahci_portp->ahciport_doneq;
@@ -6180,9 +6178,6 @@ ahci_alloc_port_state(ahci_ctl_t *ahci_ctlp, uint8_t port)
 	mutex_exit(&ahci_portp->ahciport_mutex);
 
 	return (AHCI_SUCCESS);
-
-err_case4:
-	ddi_taskq_destroy(ahci_portp->ahciport_event_taskq);
 
 err_case3:
 	ahci_dealloc_cmd_list(ahci_ctlp, ahci_portp);
@@ -7932,7 +7927,7 @@ ahci_intr_fatal_error(ahci_ctl_t *ahci_ctlp,
 			    (spkt->satapkt_cmd.satacmd_cmd_reg ==
 			    SATAC_ID_DEVICE) &&
 			    (task_abort_flag == 1))
-			goto out1;
+				goto out1;
 
 			/*
 			 * Won't emit the error message if it is an ATAPI PACKET
@@ -10845,22 +10840,19 @@ static void
 ahci_em_quiesce(ahci_ctl_t *ahci_ctlp)
 {
 	ASSERT(ahci_ctlp->ahcictl_em_flags & AHCI_EM_PRESENT);
+	VERIFY(mutex_owned(&ahci_ctlp->ahcictl_mutex));
 
-	mutex_enter(&ahci_ctlp->ahcictl_mutex);
 	ahci_ctlp->ahcictl_em_flags |= AHCI_EM_QUIESCE;
-	mutex_exit(&ahci_ctlp->ahcictl_mutex);
-
 	ddi_taskq_wait(ahci_ctlp->ahcictl_em_taskq);
 }
 
 static void
 ahci_em_suspend(ahci_ctl_t *ahci_ctlp)
 {
-	ahci_em_quiesce(ahci_ctlp);
+	VERIFY(mutex_owned(&ahci_ctlp->ahcictl_mutex));
 
-	mutex_enter(&ahci_ctlp->ahcictl_mutex);
+	ahci_em_quiesce(ahci_ctlp);
 	ahci_ctlp->ahcictl_em_flags &= ~AHCI_EM_READY;
-	mutex_exit(&ahci_ctlp->ahcictl_mutex);
 }
 
 static void
@@ -10881,7 +10873,10 @@ ahci_em_fini(ahci_ctl_t *ahci_ctlp)
 		return;
 	}
 
+	mutex_enter(&ahci_ctlp->ahcictl_mutex);
 	ahci_em_quiesce(ahci_ctlp);
+	mutex_exit(&ahci_ctlp->ahcictl_mutex);
+
 	ddi_taskq_destroy(ahci_ctlp->ahcictl_em_taskq);
 	ahci_ctlp->ahcictl_em_taskq = NULL;
 }

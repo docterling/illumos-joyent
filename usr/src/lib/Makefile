@@ -22,7 +22,7 @@
 #
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2012 by Delphix. All rights reserved.
-# Copyright 2018, Joyent, Inc.
+# Copyright 2019, Joyent, Inc.
 # Copyright (c) 2013 Gary Mills
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright (c) 2015 Gary Mills
@@ -271,6 +271,7 @@ SUBDIRS +=				\
 	rpcsec_gss	\
 	sasl_plugins	\
 	scsi		\
+	smbclnt		\
 	smbsrv		\
 	smhba		\
 	sun_fc		\
@@ -722,6 +723,7 @@ raidcfg_plugins: libraidcfg librcm libcfgadm libpicl libpicltree
 rpcsec_gss:	libgss
 sasl_plugins:	pkcs11 libgss libsasl
 scsi:		libfru libumem libdevid libdevinfo
+smbclnt:	libfakekernel pkcs11
 smbsrv:		libxnet libpthread librt libshare libidmap pkcs11 libsqlite \
 		libcryptoutil libreparse libcmdutils libresolv2 libsmbfs \
 		libuuid libfakekernel libads libgss libldap5 krb5 libmlrpc
