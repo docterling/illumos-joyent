@@ -1526,7 +1526,7 @@ u_int flags;
 	if (ifs->ifs_ipstate_logging)
 		ipstate_log(is, ISL_NEW, ifs);
 
-	if (IFS_CFWLOG(ifs))
+	if (IFS_CFWLOG(ifs, is->is_rule))
 		ipf_log_cfwlog(is, ISL_NEW, ifs);
 
 	RWLOCK_EXIT(&ifs->ifs_ipf_state);
@@ -2319,7 +2319,7 @@ u_32_t cmask;
 		is->is_flags &= ~(SI_W_SPORT|SI_W_DPORT);
 		if ((flags & SI_CLONED) && ifs->ifs_ipstate_logging)
 			ipstate_log(is, ISL_CLONE, ifs);
-		if ((flags & SI_CLONED) && IFS_CFWLOG(ifs))
+		if ((flags & SI_CLONED) && IFS_CFWLOG(ifs, is->is_rule))
 			ipf_log_cfwlog(is, ISL_CLONE, ifs);
 	}
 
@@ -3406,11 +3406,11 @@ ipf_stack_t *ifs;
 		ipstate_log(is, why, ifs);
 #if 0
 	/*
-	 * For now, ipf_log_cfwlog() copes with all "why" values.
-	 * strictly speaking, though, they all map to one event, which for
+	 * For now, ipf_log_cfwlog() copes with all "why" values. Strictly
+	 * speaking, though, they all map to one event (CFWEV_END), which for
 	 * now is not supported.
 	 */
-	if (why != 0 && IFS_CFWLOG(ifs))
+	if (why != 0 && IFS_CFWLOG(ifs, is->is_rule))
 		ipf_log_cfwlog(is, why, ifs);
 #endif
 	if (is->is_rule != NULL) {

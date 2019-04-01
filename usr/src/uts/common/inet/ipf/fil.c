@@ -2588,7 +2588,7 @@ ipf_stack_t *ifs;
 	}
 #endif
 
-	if (IFS_CFWLOG(ifs) && FR_ISBLOCK(pass))
+	if (IFS_CFWLOG(ifs, fr) && FR_ISBLOCK(pass))
 		ipf_block_cfwlog(fr, fin, ifs);
 
 	/*

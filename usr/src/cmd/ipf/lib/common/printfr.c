@@ -390,7 +390,7 @@ ioctlfunc_t	iocfunc;
 	if (*fp->fr_group != '\0')
 		printf(" group %s", fp->fr_group);
 	if (fp->fr_logtag != FR_NOLOGTAG || *fp->fr_nattag.ipt_tag ||
-	    !uuid_is_null(fp->fr_uuid)) {
+	    (fp->fr_flags & FR_CFWLOG) || !uuid_is_null(fp->fr_uuid)) {
 		char *s = "";
 
 		printf(" set-tag(");
@@ -403,6 +403,11 @@ ioctlfunc_t	iocfunc;
 				fp->fr_nattag.ipt_tag);
 			s = ", ";
 		}
+		if (fp->fr_flags & FR_CFWLOG) {
+			printf("cfwlog");
+			s = ", ";
+		}
+
 		if (!uuid_is_null(fp->fr_uuid)) {
 			char uuid[UUID_PRINTABLE_STRING_LENGTH];
 

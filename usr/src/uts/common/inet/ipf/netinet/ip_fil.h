@@ -729,6 +729,7 @@ typedef	struct	frentry {
 #define	FR_NEWISN	0x400000	/* new ISN for outgoing TCP */
 #define	FR_NOICMPERR	0x800000	/* do not match ICMP errors in state */
 #define	FR_STATESYNC	0x1000000	/* synchronize state to slave */
+#define	FR_CFWLOG	0x2000000	/* Global CFW logging enabled */
 #define	FR_NOMATCH	0x8000000	/* no match occured */
 		/*	0x10000000 	FF_LOGPASS */
 		/*	0x20000000 	FF_LOGBLOCK */
@@ -1569,8 +1570,9 @@ extern boolean_t ipf_cfwlog_enabled;
 struct ipstate;	/* Ugggh. */
 extern void ipf_log_cfwlog __P((struct ipstate *, uint_t, ipf_stack_t *));
 extern void ipf_block_cfwlog __P((frentry_t *, fr_info_t *, ipf_stack_t *));
-/* XXX KEBE SAYS MAYBE a by-rule property some day. */
-#define	IFS_CFWLOG(ifs) ((ifs)->ifs_gz_controlled && ipf_cfwlog_enabled)
+/* XXX KEBE SAYS figure out the by-rule property. */
+#define	IFS_CFWLOG(ifs, fr) ((ifs)->ifs_gz_controlled && ipf_cfwlog_enabled &&\
+	((fr)->fr_flags & FR_CFWLOG))
 struct cfwev_s;	/* See ipf_cfw.h */
 extern boolean_t ipf_cfwev_consume __P((struct cfwev_s *, boolean_t));
 /* See cfw.c's ipf_cfwev_consume_many() for details. */
