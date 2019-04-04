@@ -557,6 +557,7 @@ tagoutspec:
 	logtag
 	| nattag
 	| uuidtag
+	| cfwtag
 	;
 
 matchtagin:
