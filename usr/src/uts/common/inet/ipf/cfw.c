@@ -259,14 +259,6 @@ from_the_top:
 	}
 
 	ASSERT(consumed > 0);
-#if 0
-	if (num_requested > 0 && block) {
-		/* Nothing to consume, wait */
-		if (cv_wait_sig(&cfw_ringcv, &cfw_ringlock))
-			goto from_the_top;
-		/* Else bail with what we got... */
-	}
-#endif
 
 bail:
 	mutex_exit(&cfw_ringlock);
@@ -463,11 +455,7 @@ int
 ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 {
 	uint_t requested, consumed;
-#if 0
-	int error;
-#else
 	uio_error_t ue = {uio, 0};
-#endif
 	boolean_t block;
 
 	if (uio->uio_resid == 0)
@@ -480,36 +468,6 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 	requested = uio->uio_resid / sizeof (cfwev_t);
 	ASSERT(requested > 0);
 
-#if 0
-	consumed = 0;
-	/* One-event-at-a-time way of doing it... */
-	while (uio->uio_resid >= sizeof (cfwev_t)) {
-		cfwev_t event;
-		boolean_t keep_going;
-
-		keep_going = ipf_cfwev_consume(&event, block);
-		if (!keep_going) {
-			if (block)
-				error = EINTR;
-			else if (consumed == 0)
-				error = EWOULDBLOCK;
-			break;
-		}
-		consumed++;
-		error = uiomove((caddr_t)&event, sizeof (event), UIO_READ, uio);
-		if (error != 0) {
-			if (consumed > 0) {
-				mutex_enter(&cfw_ringlock);
-				cfw_evdrops += consumed;
-				mutex_exit(&cfw_ringlock);
-			}
-			break;
-		}
-	}
-
-	ASSERT(error != 0 || !block || consumed == requested);
-	return (error);
-#else
 	/*
 	 * As stated earlier, ipf_cfwev_consume_many() takes a callback.
 	 * The callback may be called multiple times before we return.
@@ -532,7 +490,6 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 		mutex_exit(&cfw_ringlock);
 	}
 	return (ue.ue_error);
-#endif
 }
 
 #else
