@@ -15,12 +15,14 @@
  * Copyright 2019, Joyent, Inc.
  */
 
+/* IPF oddness for compilation in userland for IPF tests. */
 #if defined(KERNEL) || defined(_KERNEL)
-# undef KERNEL
-# undef _KERNEL
-# define        KERNEL	1
-# define        _KERNEL	1
+#undef KERNEL
+#undef _KERNEL
+#define	KERNEL	1
+#define	_KERNEL	1
 #endif
+
 #include <sys/errno.h>
 #include <sys/types.h>
 #include <sys/param.h>
@@ -46,15 +48,15 @@
 #include "netinet/ip_auth.h"
 #include "netinet/ipf_stack.h"
 #ifdef IPFILTER_SCAN
-# include "netinet/ip_scan.h"
+#include "netinet/ip_scan.h"
 #endif
 #ifdef IPFILTER_SYNC
-# include "netinet/ip_sync.h"
+#include "netinet/ip_sync.h"
 #endif
 #include "netinet/ip_pool.h"
 #include "netinet/ip_htable.h"
 #ifdef IPFILTER_COMPILED
-# include "netinet/ip_rules.h"
+#include "netinet/ip_rules.h"
 #endif
 #if defined(_KERNEL)
 #include <sys/sunddi.h>
@@ -64,6 +66,7 @@
 #include <sys/file.h>
 #include <sys/uio.h>
 #include <sys/cred.h>
+#include <sys/ddi.h>
 
 /*
  * cfw == Cloud Firewall ==> routines for a global-zone data collector about
@@ -187,11 +190,24 @@ ipf_cfwev_consume(cfwev_t *event, boolean_t block)
  *
  * This function, like the callback, returns the number of events *CONSUMED*.
  */
+
+/*
+ * If you wish to attempt to coalesce reads (to reduce the likelihood of one
+ * event at a time during high load) change the number of tries below to
+ * something not 0. Early experiments set this to 10.
+ *
+ * The wait between tries is in usecs in cfw_timeout_wait. The pessimal
+ * case for this is a timeout_wait trickle of one event at a time.
+ */
+int cfw_timeout_tries = 0;
+int cfw_timeout_wait = 10000;	/* 10ms wait. */
+
 uint_t
 ipf_cfwev_consume_many(uint_t num_requested, boolean_t block,
     cfwmanycb_t cfw_many_cb, void *cbarg)
 {
 	uint_t consumed = 0, cb_consumed, contig_size;
+	int timeout_tries = cfw_timeout_tries;
 
 	mutex_enter(&cfw_ringlock);
 	/*
@@ -234,6 +250,7 @@ from_the_top:
 		ASSERT((cfw_ringstart & IPF_CFW_RING_MASK) == cfw_ringstart);
 		goto bail;
 	}
+	ASSERT(cb_consumed == contig_size);
 	cfw_ringstart &= IPF_CFW_RING_MASK;	/* In case of wraparound. */
 	num_requested -= contig_size;
 
@@ -256,9 +273,35 @@ from_the_top:
 			ASSERT(cfw_ringend > cfw_ringstart);
 			goto bail;
 		}
+		ASSERT(cb_consumed == contig_size);
+		num_requested -= contig_size;
 	}
 
 	ASSERT(consumed > 0);
+
+	if (num_requested > 0 && block && timeout_tries > 0) {
+		clock_t delta = drv_usectohz(cfw_timeout_wait);
+
+		timeout_tries--;
+		/* Nothing to consume, wait *a little bit* longer. */
+		switch (cv_reltimedwait_sig(&cfw_ringcv, &cfw_ringlock, delta,
+		    TR_CLOCK_TICK)) {
+		case 0:
+			/* Received signal! Throw out what we have. */
+			DTRACE_PROBE1(ipf__cfw__sigdiscard, int, consumed);
+			cfw_evdrops += consumed;
+			consumed = 0;
+			break;
+		case -1:
+			/* Time reached! Bail with what we got. */
+			DTRACE_PROBE(ipf__cfw__timedexpired);
+			break;
+		default:
+			/* Aha! We've got more! */
+			DTRACE_PROBE(ipf__cfw__moredata);
+			goto from_the_top;
+		}
+	}
 
 bail:
 	mutex_exit(&cfw_ringlock);
@@ -486,6 +529,7 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 			ue.ue_error = EINTR;
 		}
 		mutex_enter(&cfw_ringlock);
+		DTRACE_PROBE1(ipf__cfw__uiodiscard, int, consumed);
 		cfw_evdrops += consumed;
 		mutex_exit(&cfw_ringlock);
 	}

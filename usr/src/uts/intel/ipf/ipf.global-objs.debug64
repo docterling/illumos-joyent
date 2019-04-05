@@ -33,6 +33,8 @@ cfw_ringend
 cfw_ringfull
 cfw_ringlock
 cfw_ringstart
+cfw_timeout_tries
+cfw_timeout_wait
 fr_availfuncs
 fr_features
 fr_objbytes
