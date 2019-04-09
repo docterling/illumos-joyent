@@ -176,11 +176,16 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 		 * we were creating a new dataset from scratch.
 		 */
 		if (!raw) {
+			dmu_object_type_t type = DMU_OST_NONE;
 			boolean_t will_encrypt;
 
+			if (ds->ds_objset != NULL &&
+			    ds->ds_objset->os_phys != NULL) {
+				type = ds->ds_objset->os_phys->os_type;
+			}
+
 			error = dmu_objset_create_crypt_check(
-			    ds->ds_dir->dd_parent, drba->drba_dcp,
-			    ds->ds_objset->os_phys->os_type,
+			    ds->ds_dir->dd_parent, drba->drba_dcp, type,
 			    &will_encrypt);
 			if (error != 0)
 				return (error);
@@ -309,7 +314,13 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 
 		if ((featureflags & DMU_BACKUP_FEATURE_RAW) == 0 &&
 		    drba->drba_origin == NULL) {
+			dmu_object_type_t type = DMU_OST_NONE;
 			boolean_t will_encrypt;
+
+			if (ds->ds_objset != NULL &&
+			    ds->ds_objset->os_phys != NULL) {
+				type = ds->ds_objset->os_phys->os_type;
+			}
 
 			/*
 			 * Check that we aren't breaking any encryption rules
@@ -319,8 +330,7 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 			 * embedded data.
 			 */
 			error = dmu_objset_create_crypt_check(ds->ds_dir,
-			    drba->drba_dcp, ds->ds_objset->os_phys->os_type,
-			    &will_encrypt);
+			    drba->drba_dcp, type, &will_encrypt);
 			if (error != 0) {
 				dsl_dataset_rele_flags(ds, dsflags, FTAG);
 				return (error);
