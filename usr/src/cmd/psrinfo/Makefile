@@ -31,9 +31,10 @@ PROG = psrinfo
 include	../Makefile.cmd
 
 LDLIBS += -lkstat -ldevinfo
-CERRWARN += -_gcc=-Wno-uninitialized
+
 $(PROG).po := CPPFLAGS += -DXGETTEXT
 
+CSTD=	$(CSTD_GNU99)
 
 .KEEP_STATE:
 

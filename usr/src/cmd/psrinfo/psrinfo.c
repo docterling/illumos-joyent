@@ -114,6 +114,10 @@ static struct link *pchips = NULL;
 static struct link *cores = NULL;
 static struct link *vcpus = NULL;
 
+static int nr_cpus;
+static int nr_cores;
+static int nr_chips;
+
 static const char *cmdname;
 
 static void
@@ -124,8 +128,9 @@ usage(char *msg)
 	(void) fprintf(stderr, _("usage: \n"
 	    "\t%s -r propname\n"
 	    "\t%s [-v] [-p] [processor_id ...]\n"
-	    "\t%s -s [-p] processor_id\n"),
-	    cmdname, cmdname, cmdname);
+	    "\t%s -s [-p] processor_id\n"
+	    "\t%s -t [-S on-line | -c | -p]\n"),
+	    cmdname, cmdname, cmdname, cmdname);
 	exit(2);
 }
 
@@ -309,7 +314,7 @@ static void
 print_ps(void)
 {
 	int online = 1;
-	struct pchip *p;
+	struct pchip *p = NULL;
 	struct vcpu *v;
 	struct link *l;
 
@@ -501,6 +506,32 @@ read_property(const char *propname)
 		errx(EXIT_FAILURE, _("property %s was not found"), propname);
 }
 
+static void
+print_total(int opt_c, int opt_p, const char *opt_S)
+{
+	int count = 0;
+
+	if (opt_c) {
+		printf("%u\n", nr_cores);
+		return;
+	} else if (opt_p) {
+		printf("%u\n", nr_chips);
+		return;
+	} else if (opt_S == NULL || strcmp(opt_S, "all") == 0) {
+		printf("%u\n", nr_cpus);
+		return;
+	}
+
+
+	for (struct link *l = vcpus; l != NULL; l = l->l_next) {
+		struct vcpu *v = l->l_ptr;
+		if (strcmp(opt_S, v->v_state) == 0)
+			count++;
+	}
+
+	printf("%u\n", count);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -514,9 +545,12 @@ main(int argc, char **argv)
 	char		*s;
 	int		nspec;
 	int		optc;
-	const char	*opt_r = NULL;
-	int		opt_s = 0;
+	int		opt_c = 0;
 	int		opt_p = 0;
+	const char	*opt_r = NULL;
+	const char	*opt_S = NULL;
+	int		opt_s = 0;
+	int		opt_t = 0;
 	int		opt_v = 0;
 	int		ex = 0;
 
@@ -553,6 +587,7 @@ main(int argc, char **argv)
 			vc->v_link_core.l_ptr = vc;
 			vc->v_link_pchip.l_ptr = vc;
 			ins_link(ins, &vc->v_link);
+			nr_cpus++;
 		}
 
 		if ((knp = kstat_data_lookup(ksp, "state")) != NULL) {
@@ -639,6 +674,7 @@ nocpuid:
 			chip->p_link.l_id = vc->v_pchip_id;
 			chip->p_link.l_ptr = chip;
 			ins_link(ins, &chip->p_link);
+			nr_chips++;
 		}
 		vc->v_pchip = chip;
 
@@ -657,6 +693,7 @@ nocpuid:
 			(void) find_link(&chip->p_cores, core->c_link.l_id,
 			    &ins);
 			ins_link(ins, &core->c_link_pchip);
+			nr_cores++;
 		}
 		vc->v_core = core;
 
@@ -676,16 +713,25 @@ nocpuid:
 
 	nspec = 0;
 
-	while ((optc = getopt(argc, argv, "pr:sv")) != EOF) {
+	while ((optc = getopt(argc, argv, "cpr:S:stv")) != EOF) {
 		switch (optc) {
+		case 'c':
+			opt_c = 1;
+			break;
 		case 'p':
 			opt_p = 1;
 			break;
 		case 'r':
 			opt_r = optarg;
 			break;
+		case 'S':
+			opt_S = optarg;
+			break;
 		case 's':
 			opt_s = 1;
+			break;
+		case 't':
+			opt_t = 1;
 			break;
 		case 'v':
 			opt_v = 1;
@@ -698,12 +744,29 @@ nocpuid:
 	if (opt_r != NULL) {
 		if (optind != argc)
 			usage(_("cannot specify CPUs with -r"));
-		if (opt_p || opt_s || opt_v)
+		if (opt_c || opt_p || opt_S != NULL || opt_s || opt_t || opt_v)
 			usage(_("cannot specify other arguments with -r"));
 
 		read_property(opt_r);
 		return (EXIT_SUCCESS);
 	}
+
+	if (opt_t != NULL) {
+		if (optind != argc)
+			usage(_("cannot specify CPUs with -t"));
+		if (opt_s || opt_v)
+			usage(_("cannot specify -s or -v with -t"));
+		if (opt_S != NULL && (opt_c || opt_p))
+			usage(_("cannot specify CPU state with -c or -p"));
+		if (opt_c && opt_p)
+			usage(_("cannot specify -c and -p"));
+
+		print_total(opt_c, opt_p, opt_S);
+		return (EXIT_SUCCESS);
+	}
+
+	if (opt_S != NULL || opt_c)
+		usage(_("cannot specify -S or -c without -t"));
 
 	while (optind < argc) {
 		long id;
