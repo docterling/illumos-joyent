@@ -23,7 +23,7 @@
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2012 Milan Jurik. All rights reserved.
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 
 #include <alloca.h>
@@ -267,6 +267,16 @@ static const topo_method_t ses_component_methods[] = {
 static const topo_method_t ses_bay_methods[] = {
 	{ TOPO_METH_FAC_ENUM, TOPO_METH_FAC_ENUM_DESC, 0,
 	    TOPO_STABILITY_INTERNAL, ses_node_enum_facility },
+	{ TOPO_METH_OCCUPIED, TOPO_METH_OCCUPIED_DESC,
+	    TOPO_METH_OCCUPIED_VERSION, TOPO_STABILITY_INTERNAL,
+	    topo_mod_hc_occupied },
+	{ NULL }
+};
+
+static const topo_method_t ses_recep_methods[] = {
+	{ TOPO_METH_OCCUPIED, TOPO_METH_OCCUPIED_DESC,
+	    TOPO_METH_OCCUPIED_VERSION, TOPO_STABILITY_INTERNAL,
+	    topo_mod_hc_occupied },
 	{ NULL }
 };
 
@@ -292,6 +302,34 @@ typedef struct ses_open_fail_list {
 static ses_open_fail_list_t *ses_sofh;
 static pthread_mutex_t ses_sofmt;
 static void ses_ct_print(char *ptr);
+
+/*
+ * Static list of enclosure manufacturers/models that we will skip enumerating.
+ * To skip all models from a particular vendor, set the seb_model field to "*".
+ */
+typedef struct ses_enc_blacklist {
+	const char *seb_manuf;
+	const char *seb_model;
+} ses_enc_blacklist_t;
+
+static const ses_enc_blacklist_t enc_blacklist[] = {
+	{ "LSI", "VirtualSES" }
+};
+
+#define	N_ENC_BLACKLIST (sizeof (enc_blacklist) / \
+	sizeof (enc_blacklist[0]))
+
+static boolean_t
+ses_is_blacklisted(ses_enc_blacklist_t *seb)
+{
+	for (uint_t i = 0; i < N_ENC_BLACKLIST; i++) {
+		if (strcmp(seb->seb_manuf, enc_blacklist[i].seb_manuf) == 0 &&
+		    (strcmp(enc_blacklist[i].seb_model, "*") == 0 ||
+		    strcmp(seb->seb_model, enc_blacklist[i].seb_model) == 0))
+			return (B_TRUE);
+	}
+	return (B_FALSE);
+}
 
 static void
 ses_recheck_dir()
@@ -2133,6 +2171,15 @@ ses_create_esc_sasspecific(ses_enum_data_t *sdp, ses_enum_node_t *snp,
 				    contn, connectors[i].scpd_pm) != 0) {
 					continue;
 				}
+				if (topo_method_register(mod, contn,
+				    ses_recep_methods) != 0) {
+					topo_mod_dprintf(mod,
+					    "topo_method_register() failed: "
+					    "%s",
+					    topo_mod_errmsg(mod));
+					continue;
+				}
+
 			}
 		}
 		/* end indentation change */
@@ -3196,8 +3243,23 @@ ses_enum_gather(ses_node_t *np, void *data)
 	uint64_t prevstatus, status;
 	boolean_t report;
 	uint64_t subchassis = NO_SUBCHASSIS;
+	ses_enc_blacklist_t seb;
 
 	if (ses_node_type(np) == SES_NODE_ENCLOSURE) {
+		/*
+		 * Compare the enclosure identity against the entries in the SES
+		 * enclosure blacklist and ignore it, if found.
+		 */
+		verify(nvlist_lookup_string(props, SES_EN_PROP_VID,
+		    (char **)&seb.seb_manuf) == 0);
+		verify(nvlist_lookup_string(props, SES_EN_PROP_PID,
+		    (char **)&seb.seb_model) == 0);
+		if (ses_is_blacklisted(&seb) == B_TRUE) {
+			topo_mod_dprintf(mod, "Skipping enclosure %s-%s: is "
+			    "blacklisted", seb.seb_manuf, seb.seb_model);
+			return (SES_WALK_ACTION_TERMINATE);
+		}
+
 		/*
 		 * If we have already identified the chassis for this target,
 		 * then this is a secondary enclosure and we should ignore it,

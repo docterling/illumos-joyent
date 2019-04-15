@@ -2358,6 +2358,7 @@ f usr/bin/cktime 0555 root bin
 f usr/bin/ckuid 0555 root bin
 f usr/bin/ckyorn 0555 root bin
 f usr/bin/clear 0555 root bin
+f usr/bin/connstat 0555 root bin
 h usr/bin/cmp=usr/bin/alias
 f usr/bin/col 0555 root bin
 f usr/bin/column 0555 root bin
@@ -3632,7 +3633,6 @@ f usr/include/smbsrv/ndl/winreg.ndl 0644 root bin
 f usr/include/smbsrv/netbios.h 0644 root bin
 f usr/include/smbsrv/netrauth.h 0644 root bin
 f usr/include/smbsrv/nmpipes.h 0644 root bin
-f usr/include/smbsrv/ntaccess.h 0644 root bin
 f usr/include/smbsrv/ntifs.h 0644 root bin
 f usr/include/smbsrv/ntlocale.h 0644 root bin
 f usr/include/smbsrv/smb.h 0644 root bin
@@ -3654,7 +3654,6 @@ f usr/include/smbsrv/smb_xdr.h 0644 root bin
 f usr/include/smbsrv/smbinfo.h 0644 root bin
 f usr/include/smbsrv/string.h 0644 root bin
 f usr/include/smbsrv/svrapi.h 0644 root bin
-f usr/include/smbsrv/winioctl.h 0644 root bin
 f usr/include/smbsrv/winsvc.h 0644 root bin
 f usr/include/smhbaapi.h 0644 root bin
 f usr/include/spawn.h 0644 root bin
@@ -9874,7 +9873,9 @@ f usr/lib/mdb/proc/svc.configd.so 0555 root sys
 f usr/lib/mdb/proc/svc.startd.so 0555 root sys
 d usr/lib/mdb/raw 0755 root sys
 d usr/lib/mdb/raw/amd64 0755 root sys
+f usr/lib/mdb/raw/amd64/disk_label.so 0555 root sys
 f usr/lib/mdb/raw/amd64/dof.so 0555 root sys
+f usr/lib/mdb/raw/disk_label.so 0555 root sys
 f usr/lib/mdb/raw/dof.so 0555 root sys
 f usr/lib/more.help 0644 root bin
 f usr/lib/mpss.so.1 0755 root bin
@@ -11315,6 +11316,7 @@ h usr/share/lib/zoneinfo/Asia/Phnom_Penh=usr/share/lib/zoneinfo/Asia/Bangkok
 f usr/share/lib/zoneinfo/Asia/Pontianak 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Pyongyang 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Qatar 0644 root bin
+f usr/share/lib/zoneinfo/Asia/Qostanay 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Qyzylorda 0644 root bin
 h usr/share/lib/zoneinfo/Asia/Rangoon=usr/share/lib/zoneinfo/Asia/Yangon
 f usr/share/lib/zoneinfo/Asia/Riyadh 0644 root bin
@@ -11439,8 +11441,8 @@ f usr/share/lib/zoneinfo/Etc/GMT-9 0644 root bin
 h usr/share/lib/zoneinfo/Etc/GMT0=usr/share/lib/zoneinfo/GMT
 h usr/share/lib/zoneinfo/Etc/GMT=usr/share/lib/zoneinfo/GMT
 h usr/share/lib/zoneinfo/Etc/Greenwich=usr/share/lib/zoneinfo/GMT
-f usr/share/lib/zoneinfo/Etc/UCT 0644 root bin
-h usr/share/lib/zoneinfo/Etc/UTC=usr/share/lib/zoneinfo/UTC
+f usr/share/lib/zoneinfo/Etc/UTC 0644 root bin
+h usr/share/lib/zoneinfo/Etc/UCT=usr/share/lib/zoneinfo/Etc/UTC
 h usr/share/lib/zoneinfo/Etc/Universal=usr/share/lib/zoneinfo/UTC
 h usr/share/lib/zoneinfo/Etc/Zulu=usr/share/lib/zoneinfo/UTC
 d usr/share/lib/zoneinfo/Europe 0755 root bin
@@ -11598,7 +11600,7 @@ h usr/share/lib/zoneinfo/ROC=usr/share/lib/zoneinfo/Asia/Taipei
 f usr/share/lib/zoneinfo/ROK 0644 root bin
 f usr/share/lib/zoneinfo/Singapore 0644 root bin
 f usr/share/lib/zoneinfo/Turkey 0644 root bin
-f usr/share/lib/zoneinfo/UCT 0644 root bin
+h usr/share/lib/zoneinfo/UCT=usr/share/lib/zoneinfo/Etc/UTC
 d usr/share/lib/zoneinfo/US 0755 root bin
 f usr/share/lib/zoneinfo/US/Alaska 0644 root bin
 f usr/share/lib/zoneinfo/US/Aleutian 0644 root bin
@@ -12098,6 +12100,7 @@ f usr/share/man/man1m/chroot.1m 0444 root bin
 f usr/share/man/man1m/clear_locks.1m 0444 root bin
 f usr/share/man/man1m/clinfo.1m 0444 root bin
 f usr/share/man/man1m/clri.1m 0444 root bin
+f usr/share/man/man1m/connstat.1m 0444 root bin
 f usr/share/man/man1m/consadm.1m 0444 root bin
 f usr/share/man/man1m/coreadm.1m 0444 root bin
 f usr/share/man/man1m/cpustat.1m 0444 root bin
@@ -12454,6 +12457,7 @@ f usr/share/man/man1m/zoneadmd.1m 0444 root bin
 f usr/share/man/man1m/zonecfg.1m 0444 root bin
 f usr/share/man/man1m/zpool.1m 0444 root bin
 f usr/share/man/man1m/zstreamdump.1m 0444 root bin
+f usr/share/man/man1m/ztest.1m 0444 root bin
 d usr/share/man/man2 0755 root bin
 f usr/share/man/man2/Intro.2 0444 root bin
 s usr/share/man/man2/_Exit.2=exit.2
@@ -17188,6 +17192,7 @@ f usr/share/man/man3proc/proc_arg_psinfo.3proc 0444 root bin
 s usr/share/man/man3proc/proc_arg_xgrab.3proc=proc_arg_grab.3proc
 s usr/share/man/man3proc/proc_arg_xpsinfo.3proc=proc_arg_psinfo.3proc
 f usr/share/man/man3proc/proc_content2str.3proc 0444 root bin
+s usr/share/man/man3proc/proc_dmodelname.3proc=proc_fltname.3proc
 s usr/share/man/man3proc/proc_finistdio.3proc=proc_initstdio.3proc
 f usr/share/man/man3proc/proc_fltname.3proc 0444 root bin
 f usr/share/man/man3proc/proc_fltset2str.3proc 0444 root bin

@@ -2017,6 +2017,7 @@ bop_trap(ulong_t *tfp)
 	bop_printf(NULL, "flags register       0x%lx\n", tf->flags_reg);
 	bop_printf(NULL, "return %%rsp          0x%lx\n", tf->stk_ptr);
 	bop_printf(NULL, "return %%ss           0x%lx\n", tf->stk_seg & 0xffff);
+	bop_printf(NULL, "%%cr2			0x%lx\n", getcr2());
 
 	/* grab %[er]bp pushed by our code from the stack */
 	fakeframe.old_frame = (bop_frame_t *)*(tfp - 3);
@@ -2915,10 +2916,8 @@ boot_compinfo(int fd, struct compinfo *cbp)
 	return (0);
 }
 
-#define	BP_MAX_STRLEN	32
-
 /*
- * Get value for given boot property
+ * Get an integer value for given boot property
  */
 int
 bootprop_getval(const char *prop_name, u_longlong_t *prop_value)
@@ -2928,13 +2927,25 @@ bootprop_getval(const char *prop_name, u_longlong_t *prop_value)
 	u_longlong_t	value;
 
 	boot_prop_len = BOP_GETPROPLEN(bootops, prop_name);
-	if (boot_prop_len < 0 || boot_prop_len > sizeof (str) ||
+	if (boot_prop_len < 0 || boot_prop_len >= sizeof (str) ||
 	    BOP_GETPROP(bootops, prop_name, str) < 0 ||
 	    kobj_getvalue(str, &value) == -1)
 		return (-1);
 
 	if (prop_value)
 		*prop_value = value;
+
+	return (0);
+}
+
+int
+bootprop_getstr(const char *prop_name, char *buf, size_t buflen)
+{
+	int boot_prop_len = BOP_GETPROPLEN(bootops, prop_name);
+
+	if (boot_prop_len < 0 || boot_prop_len >= buflen ||
+	    BOP_GETPROP(bootops, prop_name, buf) < 0)
+		return (-1);
 
 	return (0);
 }

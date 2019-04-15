@@ -1581,6 +1581,9 @@ dbuf_dirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 			    FTAG);
 		}
 	}
+
+	if (tx->tx_txg > dn->dn_dirty_txg)
+		dn->dn_dirty_txg = tx->tx_txg;
 	mutex_exit(&dn->dn_mtx);
 
 	if (db->db_blkid == DMU_SPILL_BLKID)
@@ -2661,8 +2664,10 @@ top:
 		return (SET_ERROR(ENOENT));
 	}
 
-	if (db->db_buf != NULL)
+	if (db->db_buf != NULL) {
+		arc_buf_access(db->db_buf);
 		ASSERT3P(db->db.db_data, ==, db->db_buf->b_data);
+	}
 
 	ASSERT(db->db_buf == NULL || arc_referenced(db->db_buf));
 
