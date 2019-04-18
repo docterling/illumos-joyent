@@ -21,6 +21,9 @@
 /*
  * Copyright (c) 1997, 2010, Oracle and/or its affiliates. All rights reserved.
  */
+/*
+ * Copyright 2019, Joyent, Inc.
+ */
 
 #ifndef	_LIBDEVINFO_H
 #define	_LIBDEVINFO_H
@@ -241,6 +244,8 @@ extern int		di_prop_int64(di_prop_t prop, int64_t **prop_data);
 extern int		di_prop_strings(di_prop_t prop, char **prop_data);
 extern int		di_prop_bytes(di_prop_t prop, uchar_t **prop_data);
 
+extern int		di_prop_exists(dev_t dev, di_node_t node,
+			    const char *prop_name);
 extern int		di_prop_lookup_bytes(dev_t dev, di_node_t node,
 			    const char *prop_name, uchar_t **prop_data);
 extern int		di_prop_lookup_ints(dev_t dev, di_node_t node,

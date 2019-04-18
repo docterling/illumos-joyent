@@ -21,6 +21,9 @@
 /*
  * Copyright (c) 1997, 2010, Oracle and/or its affiliates. All rights reserved.
  */
+/*
+ * Copyright 2019, Joyent, Inc.
+ */
 
 /*
  * Interfaces for getting device configuration data from kernel
@@ -1705,6 +1708,16 @@ di_prop_find(dev_t match_dev, di_node_t node, const char *name)
 	}
 
 	return (DI_PROP_NIL);
+}
+
+int
+di_prop_exists(dev_t dev, di_node_t node, const char *prop_name)
+{
+	di_prop_t prop;
+
+	if ((prop = di_prop_find(dev, node, prop_name)) == DI_PROP_NIL)
+		return (0);
+	return (1);
 }
 
 int
