@@ -72,6 +72,8 @@ sdt_invop(uintptr_t addr, uintptr_t *stack, uintptr_t eax)
 
 	for (; sdt != NULL; sdt = sdt->sdp_hashnext) {
 		if ((uintptr_t)sdt->sdp_patchpoint == addr) {
+			// FIXME: here
+
 			/*
 			 * When accessing the arguments on the stack, we must
 			 * protect against accessing beyond the stack.  We can
