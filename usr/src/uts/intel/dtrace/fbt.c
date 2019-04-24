@@ -88,9 +88,6 @@ fbt_invop(uintptr_t addr, uintptr_t *stack, uintptr_t rval)
 		if ((uintptr_t)fbt->fbtp_patchpoint == addr) {
 			if (fbt->fbtp_roffset == 0) {
 				int i = 0;
-
-				// FIXME here
-
 				/*
 				 * When accessing the arguments on the stack,
 				 * we must protect against accessing beyond
