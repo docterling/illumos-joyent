@@ -20,7 +20,11 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2017, Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
+ */
+
+/*
+ * Copyright 2019, Joyent, Inc.
  */
 
 #ifndef	_SYS_PCIE_IMPL_H
@@ -301,7 +305,8 @@ typedef enum pcie_link_speed {
 	PCIE_LINK_SPEED_UNKNOWN = 0x00,
 	PCIE_LINK_SPEED_2_5	= 0x01,
 	PCIE_LINK_SPEED_5	= 0x02,
-	PCIE_LINK_SPEED_8	= 0x04
+	PCIE_LINK_SPEED_8	= 0x04,
+	PCIE_LINK_SPEED_16	= 0x08
 } pcie_link_speed_t;
 
 /*
@@ -524,11 +529,11 @@ typedef struct {
 
 #else	/* DEBUG */
 
-#define	PCIE_DBG_CFG 0 &&
-#define	PCIE_DBG 0 &&
-#define	PCIE_ARI_DBG 0 &&
-#define	PCIE_DBG_CAP 0 &&
-#define	PCIE_DBG_AER 0 &&
+#define	PCIE_DBG_CFG(...)
+#define	PCIE_DBG(...)
+#define	PCIE_ARI_DBG(...)
+#define	PCIE_DBG_CAP(...)
+#define	PCIE_DBG_AER(...)
 
 #endif	/* DEBUG */
 
