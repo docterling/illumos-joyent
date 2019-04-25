@@ -27,7 +27,7 @@
  * All rights reserved.
  */
 /*
- * Copyright 2019 Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2018 OmniOS Community Edition (OmniOSce) Association.
  */

@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2019 Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
  */
 
 /*
@@ -593,7 +593,9 @@ ht_find_sibling(cpu_t *cp)
 		if (GROUP_SIZE(cg) == 1)
 			break;
 
-		VERIFY3U(GROUP_SIZE(cg), ==, 2);
+		if (GROUP_SIZE(cg) != 2) {
+			panic("%u SMT threads unsupported", GROUP_SIZE(cg));
+		}
 
 		if (GROUP_ACCESS(cg, 0) != cp)
 			return (GROUP_ACCESS(cg, 0));
