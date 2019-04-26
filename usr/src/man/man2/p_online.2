@@ -1,9 +1,10 @@
 '\" te
 .\" Copyright (c) 2009, Sun Microsystems, Inc.  All Rights Reserved.
+.\" Copyright 2019, Joyent, Inc.
 .\" The contents of this file are subject to the terms of the Common Development and Distribution License (the "License").  You may not use this file except in compliance with the License.
 .\" You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE or http://www.opensolaris.org/os/licensing.  See the License for the specific language governing permissions and limitations under the License.
 .\" When distributing Covered Code, include this CDDL HEADER in each file and include the License file at usr/src/OPENSOLARIS.LICENSE.  If applicable, add the following below this CDDL HEADER, with the fields enclosed by brackets "[]" replaced with your own identifying information: Portions Copyright [yyyy] [name of copyright owner]
-.TH P_ONLINE 2 "April 9, 2016"
+.TH P_ONLINE 2 "Apr 25, 2019"
 .SH NAME
 p_online \- return or change processor operational status
 .SH SYNOPSIS
@@ -87,6 +88,9 @@ The maximum possible \fIprocessorid\fR value can be determined by calling
 determined by calling \fBp_online()\fR with \fIprocessorid\fR values from 0 to
 the maximum returned by \fBsysconf(_SC_CPUID_MAX)\fR. The \fBEINVAL\fR error is
 returned for invalid processor numbers.  See \fBEXAMPLES\fR below.
+.sp
+.LP
+FIXME P_ALL_SIBLINGS and P_DISABLED
 .SH RETURN VALUES
 .LP
 On successful completion, the value returned is the previous state of the

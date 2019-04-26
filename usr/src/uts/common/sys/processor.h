@@ -85,7 +85,7 @@ typedef int	chipid_t;
 #define	PS_POWEROFF	"powered-off"
 #define	PS_NOINTR	"no-intr"
 #define	PS_SPARE	"spare"
-#define	PS_DISABLED	"disabled" // FIXME: all man pages, PS_ONLINE users
+#define	PS_DISABLED	"disabled"
 
 /*
  * Structure filled in by processor_info(2). This structure

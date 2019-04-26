@@ -46,8 +46,6 @@
 #include <sys/kobj_impl.h>
 #include <sys/clock_impl.h>
 
-int kmdb_on_nmi;
-
 static void
 kdi_system_claim(void)
 {

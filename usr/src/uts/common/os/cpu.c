@@ -1268,8 +1268,6 @@ cpu_online(cpu_t *cp, int flags)
 	return (error);
 }
 
-// FIXME: audit all cpu_state users for CPU_DISABLED
-
 /*
  * Take the indicated CPU offline.
  */
@@ -1958,7 +1956,6 @@ cpu_add_active_internal(cpu_t *cp)
 	pg_cpu_active(cp);
 	lgrp_config(LGRP_CONFIG_CPU_ONLINE, (uintptr_t)cp, 0);
 
-	// FIXME?
 	bzero(&cp->cpu_loadavg, sizeof (cp->cpu_loadavg));
 }
 
@@ -1978,7 +1975,6 @@ cpu_add_active(cpu_t *cp)
 	cpu_stats_kstat_create(cp);
 	cpu_create_intrstat(cp);
 	lgrp_kstat_create(cp);
-	// FIXME: look at users
 	cpu_state_change_notify(cp->cpu_id, CPU_INIT);
 }
 
@@ -3178,7 +3174,7 @@ cpu_flags_to_state(cpu_flag_t flags)
 {
 	if (flags & CPU_DISABLED)
 		return (P_DISABLED);
-	if (flags & CPU_POWEROFF)
+	else if (flags & CPU_POWEROFF)
 		return (P_POWEROFF);
 	else if (flags & CPU_FAULTED)
 		return (P_FAULTED);

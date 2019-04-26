@@ -633,7 +633,7 @@ ht_disable(void)
 		if ((cp = cpu_get(i)) == NULL)
 			continue;
 
-		/* NB: don't have ->mcpu_ht yet. */
+		/* NB: we don't necessarily have .mcpu_ht to use here. */
 		if ((sib = ht_find_sibling(cp)) == NULL)
 			continue;
 

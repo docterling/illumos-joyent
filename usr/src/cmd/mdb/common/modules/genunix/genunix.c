@@ -3070,7 +3070,7 @@ cpuinfo_walk_cpu(uintptr_t addr, const cpu_t *cpu, cpuinfo_data_t *cid)
 	const char *flags[] = {
 	    "RUNNING", "READY", "QUIESCED", "EXISTS",
 	    "ENABLE", "OFFLINE", "POWEROFF", "FROZEN",
-	    "SPARE", "FAULTED", NULL
+	    "SPARE", "FAULTED", "DISABLED", NULL
 	};
 
 	if (cid->cid_cpu != -1) {

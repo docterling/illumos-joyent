@@ -129,7 +129,7 @@ usage(char *msg)
 	    "\t%s -r propname\n"
 	    "\t%s [-v] [-p] [processor_id ...]\n"
 	    "\t%s -s [-p] processor_id\n"
-	    "\t%s -t [-S on-line | -c | -p]\n"),
+	    "\t%s -t [-S <state> | -c | -p]\n"),
 	    cmdname, cmdname, cmdname, cmdname);
 	exit(2);
 }
@@ -464,7 +464,6 @@ valid_propname(const char *propname)
 	return (i != ARRAY_SIZE(props));
 }
 
-// FIXME: manpage
 static void
 read_property(const char *propname)
 {

@@ -24,7 +24,7 @@
  */
 
 /*
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
  */
 
 /*
@@ -1913,6 +1913,9 @@ get_pi_state(ptree_rarg_t *rarg, void *vbuf)
 		break;
 	case P_POWEROFF:
 		(void) strlcpy(vbuf, PS_POWEROFF, MAX_STATE_SIZE);
+		break;
+	case P_DISABLED:
+		(void) strlcpy(vbuf, PS_DISABLED, MAX_STATE_SIZE);
 		break;
 	default:
 		(void) strlcpy(vbuf, "unknown", MAX_STATE_SIZE);

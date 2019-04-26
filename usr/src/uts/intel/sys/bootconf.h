@@ -175,8 +175,6 @@ typedef struct bootops {
  * Boot configuration information
  */
 
-#define	BP_MAX_STRLEN	32
-
 #define	BO_MAXFSNAME	16
 #define	BO_MAXOBJNAME	256
 

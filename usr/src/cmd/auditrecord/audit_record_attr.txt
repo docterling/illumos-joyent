@@ -3,6 +3,7 @@
 # other comments are removed.
 ##
 ## Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
+## Copyright 2019, Joyent, Inc.
 ##
 ## CDDL HEADER START
 ##
@@ -1393,7 +1394,7 @@ label=AUE_P_ONLINE
     comment=1, processor ID, "processor ID":
     comment=2, flags value, "flags":
     comment=text form of flags.  Values&colon;  \
-      P_ONLINE, P_OFFLINE, P_NOINTR, P_SPARE, P_FAULTED, P_STATUS
+      P_ONLINE, P_OFFLINE, P_NOINTR, P_SPARE, P_FAULTED, P_STATUS, P_DISABLED
 
 label=AUE_QUOTACTL
   skip=Not used.
