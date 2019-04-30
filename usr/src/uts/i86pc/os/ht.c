@@ -707,6 +707,7 @@ ht_force_enabled(void)
 void
 ht_init(void)
 {
+	boolean_t found_sibling = B_FALSE;
 	cpu_t *scp = CPU;
 	cpu_t *cp = scp;
 	ulong_t flags;
@@ -726,11 +727,17 @@ ht_init(void)
 		ASSERT3P(cp->cpu_m.mcpu_ht.ch_sib, ==, NULL);
 		cp->cpu_m.mcpu_ht.ch_sib = ht_find_sibling(cp);
 
+		if (cp->cpu_m.mcpu_ht.ch_sib != NULL)
+			found_sibling = B_TRUE;
+
 		intr_restore(flags);
 		thread_affinity_clear(curthread);
 	} while ((cp = cp->cpu_next_onln) != scp);
 
 	mutex_exit(&cpu_lock);
+
+	if (!found_sibling)
+		ht_enabled = 0;
 }
 
 void
@@ -738,24 +745,27 @@ ht_late_init(void)
 {
 	int err;
 
-	if (!ht_boot_disable) {
-		set_ht_prop();
+	if (ht_boot_disable) {
+		int err;
+
+		mutex_enter(&cpu_lock);
+
+		err = ht_disable();
+
+		/*
+		 * We're early enough in boot that nothing should have stopped
+		 * us from offlining the siblings, and we didn't set up the
+		 * infrastructure for L1TF.
+		 */
+		if (err) {
+			cmn_err(CE_PANIC, "ht_disable() failed with %d", err);
+		}
+
+		mutex_exit(&cpu_lock);
+	}
+
+	if (ht_enabled)
 		cmn_err(CE_NOTE, "!HT enabled\n");
-		return;
-	}
 
-	mutex_enter(&cpu_lock);
-
-	err = ht_disable();
-
-	/*
-	 * We're early enough in boot that nothing should have stopped us from
-	 * offlining the siblings, and we didn't set up the infrastructure for
-	 * L1TF.
-	 */
-	if (err) {
-		cmn_err(CE_PANIC, "ht_disable() failed with %d", err);
-	}
-
-	mutex_exit(&cpu_lock);
+	set_ht_prop();
 }
