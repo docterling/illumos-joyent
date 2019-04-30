@@ -12,7 +12,7 @@
 /*
  * Copyright (c) 2012 DEY Storage Systems, Inc.  All rights reserved.
  * Copyright 2012 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2019, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*

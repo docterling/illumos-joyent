@@ -27,7 +27,7 @@
 /*	  All Rights Reserved		*/
 
 /*
- * Copyright 2019, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #include <sys/types.h>
