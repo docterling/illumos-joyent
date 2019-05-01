@@ -238,7 +238,6 @@ main(int argc, char *argv[])
 			force = 1;
 			break;
 
-		// FIXME man page
 		case 'H':
 			disable_ht = 1;
 			break;
