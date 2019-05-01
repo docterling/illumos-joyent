@@ -25,7 +25,8 @@ argument is changed to the state represented by the \fIflag\fR argument.
 .LP
 Legal values for \fIflag\fR are \fBP_STATUS\fR, \fBP_ONLINE\fR,
 \fBP_OFFLINE\fR, \fBP_NOINTR\fR, \fBP_FAULTED\fR, \fBP_SPARE\fR, and
-\fBP_FORCED\fR.
+\fBP_FORCED\fR. \fBP_DISABLED\fR is only supported in the \fBP_ALL_SIBLINGS\fR
+mode.
 .sp
 .LP
 When \fIflag\fR is \fBP_STATUS,\fR no processor status change occurs, but the
@@ -34,8 +35,8 @@ current processor status is returned.
 .LP
 The \fBP_ONLINE\fR, \fBP_OFFLINE\fR, \fBP_NOINTR\fR, \fBP_FAULTED\fR, and
 \fBP_SPARE\fR values for \fIflag\fR refer to valid processor states. The
-\fBP_OFFLINE\fR, \fBP_SPARE\fR,  and \fBP_FAULTED\fR processor states can be
-combined with the \fBP_FORCED\fR flag.
+\fBP_ONLINE\fR, \fBP_OFFLINE\fR, \fBP_SPARE\fR,  and \fBP_FAULTED\fR processor
+states can be combined with the \fBP_FORCED\fR flag.
 .sp
 .LP
 A processor in the \fBP_ONLINE\fR state is allowed to process \fBLWPs\fR
@@ -70,6 +71,11 @@ any of the other states, but since the processor might generate additional
 errors, electing to reactivate such a processor should be carefully considered.
 .sp
 .LP
+A processor in the \fBP_DISABLED\fR state is not allowed to process LWPs. In
+many respects, the \fBP_DISABLED\fR state is similar to the \fBP_OFFLINE\fR
+state, but describes a processor explicitly disabled for general use.
+.sp
+.LP
 Forced processor state transition can be requested if a new processor state is
 specified with the bitwise-inclusive OR of the special \fBP_FORCED\fR flag.
 Forcing transition of a processor to the \fBP_OFFLINE\fR, \fBP_SPARE\fR, or
@@ -90,7 +96,15 @@ the maximum returned by \fBsysconf(_SC_CPUID_MAX)\fR. The \fBEINVAL\fR error is
 returned for invalid processor numbers.  See \fBEXAMPLES\fR below.
 .sp
 .LP
-FIXME P_ALL_SIBLINGS and P_DISABLED
+The special value \fBP_ALL_SIBLINGS\fR can be specified instead of a
+\fIprocessorid\fR. In this case, the operation applies to all but one of the
+SMT siblings on each CPU core. The only state transition supported is
+\fBP_DISABLED\fR. The operation is only considered successful if all candidate
+siblings could be disabled.  Individual CPUs disabled in this manner can
+transition to \fBP_ONLINE\fR only in combination with the \fBP_FORCED\fR flag,
+and only if they were disabled via this system call.
+.sp
+.LP
 .SH RETURN VALUES
 .LP
 On successful completion, the value returned is the previous state of the
