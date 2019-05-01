@@ -133,8 +133,6 @@ p_online_internal_locked(processorid_t cpun, int new_status, int *old_status)
 		case P_NOINTR:
 			cpu_intr_enable(cp);
 			break;
-			error = cpu_online(cp, flags);
-			break;
 		}
 		break;
 
