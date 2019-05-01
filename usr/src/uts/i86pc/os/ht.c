@@ -105,7 +105,6 @@
  * we'll add a small penalty to the score.  This also makes sure a VCPU thread
  * migration behaves properly.
  *
- *
  * ht_init() / ht_late_init()
  *
  * Set up HT handling. If ht_boot_disable is set, ht_late_init(), which runs
