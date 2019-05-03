@@ -1570,9 +1570,8 @@ extern boolean_t ipf_cfwlog_enabled;
 struct ipstate;	/* Ugggh. */
 extern void ipf_log_cfwlog __P((struct ipstate *, uint_t, ipf_stack_t *));
 extern void ipf_block_cfwlog __P((frentry_t *, fr_info_t *, ipf_stack_t *));
-/* XXX KEBE SAYS figure out the by-rule property. */
 #define	IFS_CFWLOG(ifs, fr) ((ifs)->ifs_gz_controlled && ipf_cfwlog_enabled &&\
-	((fr)->fr_flags & FR_CFWLOG))
+	fr != NULL && ((fr)->fr_flags & FR_CFWLOG))
 struct cfwev_s;	/* See ipf_cfw.h */
 extern boolean_t ipf_cfwev_consume __P((struct cfwev_s *, boolean_t));
 /* See cfw.c's ipf_cfwev_consume_many() for details. */

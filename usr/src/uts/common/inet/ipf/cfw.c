@@ -426,6 +426,7 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 	 * there are two flags in a rule (one for in, one for out).
 	 */
 	event.cfwev_length = sizeof (event);
+	ASSERT(is->is_rule != NULL);
 	event.cfwev_direction = (is->is_rule->fr_flags & FR_INQUE) ?
 	    CFWDIR_IN : CFWDIR_OUT;
 	event.cfwev_protocol = is->is_p;
