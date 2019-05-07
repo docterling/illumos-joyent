@@ -29,7 +29,7 @@
 /*
  * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2013 Pluribus Networks, Inc.
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #include <sys/processor.h>

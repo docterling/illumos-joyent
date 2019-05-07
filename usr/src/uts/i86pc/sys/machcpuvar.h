@@ -23,7 +23,7 @@
  * Use is subject to license terms.
  */
 /*
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef	_SYS_MACHCPUVAR_H
@@ -142,7 +142,7 @@ struct kpti_frame {
 
 typedef struct cpu_smt {
 	lock_t cs_lock;
-	char ch_pad[56];
+	char cs_pad[56];
 	struct cpu *cs_sib;
 	volatile uint64_t cs_intr_depth;
 	volatile uint64_t cs_state;

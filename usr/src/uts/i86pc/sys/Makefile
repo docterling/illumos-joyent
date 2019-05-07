@@ -61,9 +61,9 @@ CHKHDRS=  \
 	psm_modctl.h	\
 	psm_types.h	\
 	rm_platter.h	\
-	smt.h		\
-	smp_impldefs.h	\
 	sbd_ioctl.h	\
+	smp_impldefs.h	\
+	smt.h		\
 	vm_machparam.h	\
 	x_call.h	\
 	xc_levels.h	\

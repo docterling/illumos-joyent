@@ -25,7 +25,7 @@
 /*
  * Copyright (c) 2010, Intel Corporation.
  * All rights reserved.
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*
