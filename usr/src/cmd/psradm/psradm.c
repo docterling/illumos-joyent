@@ -228,7 +228,7 @@ main(int argc, char *argv[])
 
 	cmdname = basename(argv[0]);
 
-	while ((c = getopt(argc, argv, "afFSinsv")) != EOF) {
+	while ((c = getopt(argc, argv, "afFinsSv")) != EOF) {
 		switch (c) {
 
 		case 'a':		/* applies to all possible CPUs */
