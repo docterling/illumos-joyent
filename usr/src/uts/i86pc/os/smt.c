@@ -159,8 +159,9 @@ static uint_t empty_pil = XC_CPUPOKE_PIL;
 int smt_exclusion = 1;
 
 /*
- * How long smt_acquire() will spin trying to acquire the core, in micro-seconds.
- * This is enough time to wait out a significant proportion of interrupts.
+ * How long smt_acquire() will spin trying to acquire the core, in
+ * micro-seconds.  This is enough time to wait out a significant proportion of
+ * interrupts.
  */
 clock_t smt_acquire_wait_time = 64;
 
@@ -291,7 +292,8 @@ smt_acquire(void)
 
 			if (sibling_compatible(sibsmt, zoneid)) {
 				smt->cs_state = CS_MK(CM_POISONED, zoneid);
-				sibsmt->cs_sibstate = CS_MK(CM_POISONED, zoneid);
+				sibsmt->cs_sibstate = CS_MK(CM_POISONED,
+				    zoneid);
 				membar_enter();
 				ret = 1;
 			}
@@ -723,7 +725,8 @@ smt_init(void)
 
 		cp->cpu_m.mcpu_smt.cs_intr_depth = 0;
 		cp->cpu_m.mcpu_smt.cs_state = CS_MK(CM_THREAD, GLOBAL_ZONEID);
-		cp->cpu_m.mcpu_smt.cs_sibstate = CS_MK(CM_THREAD, GLOBAL_ZONEID);
+		cp->cpu_m.mcpu_smt.cs_sibstate = CS_MK(CM_THREAD,
+		    GLOBAL_ZONEID);
 		ASSERT3P(cp->cpu_m.mcpu_smt.cs_sib, ==, NULL);
 		cp->cpu_m.mcpu_smt.cs_sib = smt_find_sibling(cp);
 

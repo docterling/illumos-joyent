@@ -59,7 +59,7 @@ usage(void)
 	(void) fprintf(stderr, "usage:\n"
 	    "\t%s [-F] -f|-n|-i|-s [-v] processor_id ...\n"
 	    "\t%s -a -f|-n|-i [-v]\n"
-	    "\t%s -aH [-v]\n",
+	    "\t%s -aS [-v]\n",
 	    cmdname, cmdname, cmdname);
 }
 
@@ -228,7 +228,7 @@ main(int argc, char *argv[])
 
 	cmdname = basename(argv[0]);
 
-	while ((c = getopt(argc, argv, "afFHinsv")) != EOF) {
+	while ((c = getopt(argc, argv, "afFSinsv")) != EOF) {
 		switch (c) {
 
 		case 'a':		/* applies to all possible CPUs */
@@ -239,7 +239,7 @@ main(int argc, char *argv[])
 			force = 1;
 			break;
 
-		case 'H':
+		case 'S':
 			disable_smt = 1;
 			break;
 
@@ -269,7 +269,7 @@ main(int argc, char *argv[])
 
 	if (disable_smt) {
 		if (!all_flag) {
-			fprintf(stderr, "%s: -H must be used with -a.\n",
+			fprintf(stderr, "%s: -S must be used with -a.\n",
 			    cmdname);
 			usage();
 			return (2);
