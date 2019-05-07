@@ -90,7 +90,7 @@
 #include <sys/zfeature.h>
 #include <sys/zio_checksum.h>
 #include <sys/zil_impl.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 #include <sys/dkioc_free_util.h>
 #include <sys/zfs_rlock.h>
 
@@ -1278,7 +1278,7 @@ zvol_strategy(buf_t *bp)
 	    (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS)) &&
 	    !doread && !is_dumpified;
 
-	ht_begin_unsafe();
+	smt_begin_unsafe();
 
 	/*
 	 * There must be no buffer changes when doing a dmu_sync() because
@@ -1327,7 +1327,7 @@ zvol_strategy(buf_t *bp)
 		zil_commit(zv->zv_zilog, ZVOL_OBJ);
 	biodone(bp);
 
-	ht_end_unsafe();
+	smt_end_unsafe();
 
 	return (0);
 }
@@ -1409,7 +1409,7 @@ zvol_read(dev_t dev, uio_t *uio, cred_t *cr)
 		return (error);
 	}
 
-	ht_begin_unsafe();
+	smt_begin_unsafe();
 
 	DTRACE_PROBE3(zvol__uio__start, dev_t, dev, uio_t *, uio, int, 0);
 

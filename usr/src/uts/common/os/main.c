@@ -74,7 +74,7 @@
 #include <sys/stack.h>
 #include <sys/brand.h>
 #include <sys/mmapobj.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 
 #include <vm/as.h>
 #include <vm/seg_kmem.h>
@@ -627,7 +627,7 @@ main(void)
 #if defined(__x86)
 	fastboot_post_startup();
 
-	ht_late_init();
+	smt_late_init();
 #endif
 
 	/*

@@ -41,7 +41,7 @@
 #include <sys/processor.h>
 #include <sys/debug.h>
 #include <sys/policy.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 
 /*
  * CPU state diagram
@@ -67,7 +67,7 @@ p_online_internal_locked(processorid_t cpun, int new_status, int *old_status)
 			goto out;
 		}
 
-		return (ht_disable());
+		return (smt_disable());
 	}
 
 	if ((cp = cpu_get(cpun)) == NULL) {

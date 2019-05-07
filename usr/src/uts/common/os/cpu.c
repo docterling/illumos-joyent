@@ -59,7 +59,7 @@
 #include <sys/time.h>
 #include <sys/archsystm.h>
 #include <sys/sdt.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 #if defined(__x86) || defined(__amd64)
 #include <sys/x86_archext.h>
 #endif
@@ -1225,7 +1225,7 @@ cpu_online(cpu_t *cp, int flags)
 
 	ASSERT(MUTEX_HELD(&cpu_lock));
 
-	if ((cp->cpu_flags & CPU_DISABLED) && !ht_can_enable(cp, flags))
+	if ((cp->cpu_flags & CPU_DISABLED) && !smt_can_enable(cp, flags))
 		return (EINVAL);
 
 	/*
@@ -1243,7 +1243,7 @@ cpu_online(cpu_t *cp, int flags)
 		}
 
 		if (cp->cpu_flags & CPU_DISABLED)
-			ht_force_enabled();
+			smt_force_enabled();
 
 		cp->cpu_flags &= ~(CPU_QUIESCED | CPU_OFFLINE | CPU_FROZEN |
 		    CPU_SPARE | CPU_DISABLED);

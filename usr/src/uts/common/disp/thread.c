@@ -75,7 +75,7 @@
 #include <sys/cpucaps.h>
 #include <sys/kiconv.h>
 #include <sys/ctype.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 
 #ifndef	STACK_GROWTH_DOWN
 #error Stacks do not grow downward; 3b2 zombie attack detected!
@@ -1421,7 +1421,7 @@ thread_unpin()
 	itp = t->t_intr;		/* interrupted thread */
 	t->t_intr = NULL;		/* clear interrupt ptr */
 
-	ht_end_intr();
+	smt_end_intr();
 
 	/*
 	 * Get state from interrupt thread for the one

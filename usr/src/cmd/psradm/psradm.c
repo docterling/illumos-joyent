@@ -40,6 +40,7 @@
 #include <time.h>
 #include <utmpx.h>
 #include <assert.h>
+#include <stdbool.h>
 
 static char	*cmdname;	/* command name for messages */
 
@@ -223,7 +224,7 @@ main(int argc, char *argv[])
 	char	*errptr;
 	int	errors;
 	psr_action_t	*pac;
-	int disable_ht = 0;
+	bool disable_smt = 0;
 
 	cmdname = basename(argv[0]);
 
@@ -239,7 +240,7 @@ main(int argc, char *argv[])
 			break;
 
 		case 'H':
-			disable_ht = 1;
+			disable_smt = 1;
 			break;
 
 		case 'f':
@@ -266,7 +267,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (disable_ht) {
+	if (disable_smt) {
 		if (!all_flag) {
 			fprintf(stderr, "%s: -H must be used with -a.\n",
 			    cmdname);

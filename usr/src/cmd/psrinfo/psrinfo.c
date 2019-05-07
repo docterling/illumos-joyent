@@ -114,9 +114,9 @@ static struct link *pchips = NULL;
 static struct link *cores = NULL;
 static struct link *vcpus = NULL;
 
-static int nr_cpus;
-static int nr_cores;
-static int nr_chips;
+static uint_t nr_cpus;
+static uint_t nr_cores;
+static uint_t nr_chips;
 
 static const char *cmdname;
 
@@ -453,7 +453,7 @@ valid_propname(const char *propname)
 	size_t i;
 
 	const char *props[] = {
-		"ht_enabled",
+		"smt_enabled",
 	};
 
 	for (i = 0; i < ARRAY_SIZE(props); i++) {
@@ -503,12 +503,14 @@ read_property(const char *propname)
 
 	if (!show_all)
 		errx(EXIT_FAILURE, _("property %s was not found"), propname);
+
+	di_fini(root_node);
 }
 
 static void
 print_total(int opt_c, int opt_p, const char *opt_S)
 {
-	int count = 0;
+	uint_t count = 0;
 
 	if (opt_c) {
 		printf("%u\n", nr_cores);
