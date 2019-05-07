@@ -1471,7 +1471,7 @@ zvol_read(dev_t dev, uio_t *uio, cred_t *cr)
 	DTRACE_PROBE4(zvol__uio__done, dev_t, dev, uio_t *, uio, int, 0, int,
 	    error);
 
-	ht_end_unsafe();
+	smt_end_unsafe();
 
 	return (error);
 }
@@ -1504,7 +1504,7 @@ zvol_write(dev_t dev, uio_t *uio, cred_t *cr)
 		return (error);
 	}
 
-	ht_begin_unsafe();
+	smt_begin_unsafe();
 
 	DTRACE_PROBE3(zvol__uio__start, dev_t, dev, uio_t *, uio, int, 1);
 
@@ -1555,7 +1555,7 @@ zvol_write(dev_t dev, uio_t *uio, cred_t *cr)
 	DTRACE_PROBE4(zvol__uio__done, dev_t, dev, uio_t *, uio, int, 1, int,
 	    error);
 
-	ht_end_unsafe();
+	smt_end_unsafe();
 
 	mutex_enter(&zonep->zone_vfs_lock);
 	zonep->zone_vfs_rwstats.writes++;
@@ -1827,7 +1827,7 @@ zvol_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp)
 		dkc = (struct dk_callback *)arg;
 		mutex_exit(&zfsdev_state_lock);
 
-		ht_begin_unsafe();
+		smt_begin_unsafe();
 
 		zil_commit(zv->zv_zilog, ZVOL_OBJ);
 		if ((flag & FKIOCTL) && dkc != NULL && dkc->dkc_callback) {
@@ -1835,7 +1835,7 @@ zvol_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp)
 			error = 0;
 		}
 
-		ht_end_unsafe();
+		smt_end_unsafe();
 
 		return (error);
 
@@ -1861,9 +1861,9 @@ zvol_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp)
 		} else {
 			zv->zv_flags &= ~ZVOL_WCE;
 			mutex_exit(&zfsdev_state_lock);
-			ht_begin_unsafe();
+			smt_begin_unsafe();
 			zil_commit(zv->zv_zilog, ZVOL_OBJ);
-			ht_end_unsafe();
+			smt_end_unsafe();
 		}
 		return (0);
 	}
@@ -1916,7 +1916,7 @@ zvol_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp)
 
 		mutex_exit(&zfsdev_state_lock);
 
-		ht_begin_unsafe();
+		smt_begin_unsafe();
 
 		for (int i = 0; i < dfl->dfl_num_exts; i++) {
 			uint64_t start = dfl->dfl_exts[i].dfle_start,
@@ -1973,7 +1973,7 @@ zvol_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp)
 		if (!(flag & FKIOCTL))
 			dfl_free(dfl);
 
-		ht_end_unsafe();
+		smt_end_unsafe();
 
 		return (error);
 	}

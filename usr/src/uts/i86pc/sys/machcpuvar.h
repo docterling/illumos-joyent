@@ -142,7 +142,7 @@ struct kpti_frame {
 
 typedef struct cpu_smt {
 	lock_t cs_lock;
-	csar ch_pad[56];
+	char ch_pad[56];
 	struct cpu *cs_sib;
 	volatile uint64_t cs_intr_depth;
 	volatile uint64_t cs_state;

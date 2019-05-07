@@ -257,31 +257,31 @@ int
 smt_acquire(void)
 {
 	clock_t wait = smt_acquire_wait_time;
-	cpu_smt_t *ht = &CPU->cpu_m.mcpu_smt;
+	cpu_smt_t *smt = &CPU->cpu_m.mcpu_smt;
 	zoneid_t zoneid = getzoneid();
 	cpu_smt_t *sibsmt;
 	int ret = 0;
 
 	ASSERT(!interrupts_enabled());
 
-	if (ht->cs_sib == NULL) {
+	if (smt->cs_sib == NULL) {
 		/* For the "sequential" L1TF case. */
 		spec_uarch_flush();
 		return (1);
 	}
 
-	sibsmt = &ht->cs_sib->cpu_m.mcpu_smt;
+	sibsmt = &smt->cs_sib->cpu_m.mcpu_smt;
 
 	/* A VCPU thread should never change zone. */
-	ASSERT3U(CS_ZONE(ht->cs_state), ==, zoneid);
-	ASSERT3U(CS_MARK(ht->cs_state), ==, CM_VCPU);
+	ASSERT3U(CS_ZONE(smt->cs_state), ==, zoneid);
+	ASSERT3U(CS_MARK(smt->cs_state), ==, CM_VCPU);
 	ASSERT3U(zoneid, !=, GLOBAL_ZONEID);
 	ASSERT3U(curthread->t_preempt, >=, 1);
 	ASSERT(curthread->t_schedflag & TS_VCPU);
 
 	while (ret == 0 && wait > 0) {
 
-		if (yield_to_vcpu(ht->cs_sib, zoneid)) {
+		if (yield_to_vcpu(smt->cs_sib, zoneid)) {
 			ret = -1;
 			break;
 		}
@@ -290,7 +290,7 @@ smt_acquire(void)
 			lock_set(&sibsmt->cs_lock);
 
 			if (sibling_compatible(sibsmt, zoneid)) {
-				ht->cs_state = CS_MK(CM_POISONED, zoneid);
+				smt->cs_state = CS_MK(CM_POISONED, zoneid);
 				sibsmt->cs_sibstate = CS_MK(CM_POISONED, zoneid);
 				membar_enter();
 				ret = 1;
@@ -315,25 +315,25 @@ smt_acquire(void)
 void
 smt_release(void)
 {
-	cpu_smt_t *ht = &CPU->cpu_m.mcpu_smt;
+	cpu_smt_t *smt = &CPU->cpu_m.mcpu_smt;
 	zoneid_t zoneid = getzoneid();
 	cpu_smt_t *sibsmt;
 
 	ASSERT(!interrupts_enabled());
 
-	if (ht->cs_sib == NULL)
+	if (smt->cs_sib == NULL)
 		return;
 
 	ASSERT3U(zoneid, !=, GLOBAL_ZONEID);
-	ASSERT3U(CS_ZONE(ht->cs_state), ==, zoneid);
-	ASSERT3U(CS_MARK(ht->cs_state), ==, CM_POISONED);
+	ASSERT3U(CS_ZONE(smt->cs_state), ==, zoneid);
+	ASSERT3U(CS_MARK(smt->cs_state), ==, CM_POISONED);
 	ASSERT3U(curthread->t_preempt, >=, 1);
 
-	sibsmt = &ht->cs_sib->cpu_m.mcpu_smt;
+	sibsmt = &smt->cs_sib->cpu_m.mcpu_smt;
 
 	lock_set(&sibsmt->cs_lock);
 
-	ht->cs_state = CS_MK(CM_VCPU, zoneid);
+	smt->cs_state = CS_MK(CM_VCPU, zoneid);
 	sibsmt->cs_sibstate = CS_MK(CM_VCPU, zoneid);
 	membar_producer();
 
@@ -341,22 +341,22 @@ smt_release(void)
 }
 
 static void
-smt_kick(cpu_smt_t *ht, zoneid_t zoneid)
+smt_kick(cpu_smt_t *smt, zoneid_t zoneid)
 {
 	uint64_t sibstate;
 
-	ASSERT(LOCK_HELD(&ht->cs_lock));
+	ASSERT(LOCK_HELD(&smt->cs_lock));
 	ASSERT(!interrupts_enabled());
 
-	poke_cpu(ht->cs_sib->cpu_id);
+	poke_cpu(smt->cs_sib->cpu_id);
 
 	membar_consumer();
-	sibstate = ht->cs_sibstate;
+	sibstate = smt->cs_sibstate;
 
 	if (CS_MARK(sibstate) != CM_POISONED || CS_ZONE(sibstate) == zoneid)
 		return;
 
-	lock_clear(&ht->cs_lock);
+	lock_clear(&smt->cs_lock);
 
 	/*
 	 * Spin until we can see the sibling has been kicked out or is otherwise
@@ -364,7 +364,7 @@ smt_kick(cpu_smt_t *ht, zoneid_t zoneid)
 	 */
 	for (;;) {
 		membar_consumer();
-		sibstate = ht->cs_sibstate;
+		sibstate = smt->cs_sibstate;
 
 		if (CS_MARK(sibstate) != CM_POISONED ||
 		    CS_ZONE(sibstate) == zoneid)
@@ -373,7 +373,7 @@ smt_kick(cpu_smt_t *ht, zoneid_t zoneid)
 		SMT_PAUSE();
 	}
 
-	lock_set(&ht->cs_lock);
+	lock_set(&smt->cs_lock);
 }
 
 static boolean_t
@@ -386,27 +386,27 @@ void
 smt_begin_intr(uint_t pil)
 {
 	ulong_t flags;
-	cpu_smt_t *ht;
+	cpu_smt_t *smt;
 
 	ASSERT(pil <= PIL_MAX);
 
 	flags = intr_clear();
-	ht = &CPU->cpu_m.mcpu_smt;
+	smt = &CPU->cpu_m.mcpu_smt;
 
-	if (ht->cs_sib == NULL) {
+	if (smt->cs_sib == NULL) {
 		intr_restore(flags);
 		return;
 	}
 
-	if (atomic_inc_64_nv(&ht->cs_intr_depth) == 1 && pil_needs_kick(pil)) {
-		lock_set(&ht->cs_lock);
+	if (atomic_inc_64_nv(&smt->cs_intr_depth) == 1 && pil_needs_kick(pil)) {
+		lock_set(&smt->cs_lock);
 
 		membar_consumer();
 
-		if (CS_MARK(ht->cs_sibstate) == CM_POISONED)
-			smt_kick(ht, GLOBAL_ZONEID);
+		if (CS_MARK(smt->cs_sibstate) == CM_POISONED)
+			smt_kick(smt, GLOBAL_ZONEID);
 
-		lock_clear(&ht->cs_lock);
+		lock_clear(&smt->cs_lock);
 	}
 
 	intr_restore(flags);
@@ -416,34 +416,34 @@ void
 smt_end_intr(void)
 {
 	ulong_t flags;
-	cpu_smt_t *ht;
+	cpu_smt_t *smt;
 
 	flags = intr_clear();
-	ht = &CPU->cpu_m.mcpu_smt;
+	smt = &CPU->cpu_m.mcpu_smt;
 
-	if (ht->cs_sib == NULL) {
+	if (smt->cs_sib == NULL) {
 		intr_restore(flags);
 		return;
 	}
 
-	ASSERT3U(ht->cs_intr_depth, >, 0);
-	atomic_dec_64(&ht->cs_intr_depth);
+	ASSERT3U(smt->cs_intr_depth, >, 0);
+	atomic_dec_64(&smt->cs_intr_depth);
 
 	intr_restore(flags);
 }
 
 static inline boolean_t
-smt_need_kick(cpu_smt_t *ht, zoneid_t zoneid)
+smt_need_kick(cpu_smt_t *smt, zoneid_t zoneid)
 {
 	membar_consumer();
 
-	if (CS_MARK(ht->cs_sibstate) != CM_POISONED)
+	if (CS_MARK(smt->cs_sibstate) != CM_POISONED)
 		return (B_FALSE);
 
-	if (CS_MARK(ht->cs_state) == CM_UNSAFE)
+	if (CS_MARK(smt->cs_state) == CM_UNSAFE)
 		return (B_TRUE);
 
-	return (CS_ZONE(ht->cs_sibstate) != zoneid);
+	return (CS_ZONE(smt->cs_sibstate) != zoneid);
 }
 
 void
@@ -452,37 +452,37 @@ smt_mark(void)
 	zoneid_t zoneid = getzoneid();
 	kthread_t *t = curthread;
 	ulong_t flags;
-	cpu_smt_t *ht;
+	cpu_smt_t *smt;
 	cpu_t *cp;
 
 	flags = intr_clear();
 
 	cp = CPU;
-	ht = &cp->cpu_m.mcpu_smt;
+	smt = &cp->cpu_m.mcpu_smt;
 
-	if (ht->cs_sib == NULL) {
+	if (smt->cs_sib == NULL) {
 		intr_restore(flags);
 		return;
 	}
 
-	lock_set(&ht->cs_lock);
+	lock_set(&smt->cs_lock);
 
 	/*
 	 * If we were a nested interrupt and went through the resume_from_intr()
 	 * path, we can now be resuming to a pinning interrupt thread; in which
 	 * case, skip marking, until we later resume to a "real" thread.
 	 */
-	if (ht->cs_intr_depth > 0) {
+	if (smt->cs_intr_depth > 0) {
 		ASSERT3P(t->t_intr, !=, NULL);
 
-		if (smt_need_kick(ht, zoneid))
-			smt_kick(ht, zoneid);
+		if (smt_need_kick(smt, zoneid))
+			smt_kick(smt, zoneid);
 		goto out;
 	}
 
 	if (t == t->t_cpu->cpu_idle_thread) {
 		ASSERT3U(zoneid, ==, GLOBAL_ZONEID);
-		ht->cs_state = CS_MK(CM_IDLE, zoneid);
+		smt->cs_state = CS_MK(CM_IDLE, zoneid);
 	} else {
 		uint64_t state = CM_THREAD;
 
@@ -491,10 +491,10 @@ smt_mark(void)
 		else if (t->t_schedflag & TS_VCPU)
 			state = CM_VCPU;
 
-		ht->cs_state = CS_MK(state, zoneid);
+		smt->cs_state = CS_MK(state, zoneid);
 
-		if (smt_need_kick(ht, zoneid))
-			smt_kick(ht, zoneid);
+		if (smt_need_kick(smt, zoneid))
+			smt_kick(smt, zoneid);
 	}
 
 out:

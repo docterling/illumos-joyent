@@ -330,8 +330,8 @@ extern cpu_core_t cpu_core[];
  * suspended (in the suspend path), or have yet to be resumed (in the resume
  * case).
  *
- * CPU_DISABLED is used for disabling hyper-threading. It is similar to
- * CPU_OFFLINE, but cannot be onlined without being forced.
+ * CPU_DISABLED is used for disabling SMT. It is similar to CPU_OFFLINE, but
+ * cannot be onlined without being forced.
  *
  * On some platforms CPUs can be individually powered off.
  * The following flags are set for powered off CPUs: CPU_QUIESCED,
