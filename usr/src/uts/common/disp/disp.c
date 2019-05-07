@@ -1239,7 +1239,7 @@ setbackdq(kthread_t *tp)
 		 * We'll generally let this thread continue to run where
 		 * it last ran...but will consider migration if:
 		 * - The thread probably doesn't have much cache warmth.
-		 * - HT exclusion would prefer us to run elsewhere
+		 * - SMT exclusion would prefer us to run elsewhere
 		 * - The CPU where it last ran is the target of an offline
 		 *   request.
 		 * - The thread last ran outside its home lgroup.
