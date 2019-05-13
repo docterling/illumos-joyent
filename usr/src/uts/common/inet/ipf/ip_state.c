@@ -3408,7 +3408,7 @@ ipf_stack_t *ifs;
 	/*
 	 * For now, ipf_log_cfwlog() copes with all "why" values. Strictly
 	 * speaking, though, they all map to one event (CFWEV_END), which for
-	 * now is not supported.
+	 * now is not supported, hence the #if 0.
 	 */
 	if (why != 0 && IFS_CFWLOG(ifs, is->is_rule))
 		ipf_log_cfwlog(is, why, ifs);

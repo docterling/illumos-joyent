@@ -9,8 +9,6 @@
  * http://www.illumos.org/license/CDDL.
  */
 
-/* XXX KEBE ASKS --> Is this affected instead by the IPFILTER.LICENCE? */
-
 /*
  * Copyright 2019, Joyent, Inc.
  */
@@ -114,8 +112,10 @@ static uint64_t cfw_evreports;
 static uint64_t cfw_evdrops;
 
 /*
- * For now redundant-copy. In the future, MAYBE pass parms and do the copying
- * here?
+ * Place an event in the CFW event ring buffer.
+ *
+ * For now, be simple and drop the oldest event if we overflow. We may wish to
+ * selectively drop older events based on type in the future.
  */
 static void
 ipf_cfwev_report(cfwev_t *event)
@@ -140,12 +140,13 @@ ipf_cfwev_report(cfwev_t *event)
 	mutex_exit(&cfw_ringlock);
 }
 
+#if 0
 /*
- * For now, merely copy one from the ring buffer into what's provided.
- * In the future, maybe lock-then-callback, even with a request for multiple
- * events?
+ * Simple event consumer which copies one event from the ring buffer into
+ * what's provided.  In the future, maybe lock-then-callback, even with a
+ * request for multiple events?
  *
- * Also for now, if empty, either cv_wait() or return B_FALSE, depending on
+ * If there are no events, either cv_wait() or return B_FALSE, depending on
  * "block".
  */
 boolean_t
@@ -170,6 +171,7 @@ ipf_cfwev_consume(cfwev_t *event, boolean_t block)
 	mutex_exit(&cfw_ringlock);
 	return (B_TRUE);
 }
+#endif
 
 /*
  * More sophisticated access to multiple CFW events that can allow copying
@@ -197,7 +199,7 @@ ipf_cfwev_consume(cfwev_t *event, boolean_t block)
  * something not 0. Early experiments set this to 10.
  *
  * The wait between tries is in usecs in cfw_timeout_wait. The pessimal
- * case for this is a timeout_wait trickle of one event at a time.
+ * case for this is a timeout_wait-spaced trickle of one event at a time.
  */
 int cfw_timeout_tries = 0;
 int cfw_timeout_wait = 10000;	/* 10ms wait. */
@@ -210,16 +212,16 @@ ipf_cfwev_consume_many(uint_t num_requested, boolean_t block,
 	int timeout_tries = cfw_timeout_tries;
 
 	mutex_enter(&cfw_ringlock);
-	/*
-	 * Can goto here (ewww) if caller wants blocking. NOTE that
-	 * num_requested may have been decremented and consumed may have been
-	 * incremented if we arrive here via a goto after a cv_wait.
-	 */
 
 	/* Silly reality checks */
 	ASSERT3U(cfw_ringstart, <, IPF_CFW_RING_BUFS);
 	ASSERT3U(cfw_ringend, <, IPF_CFW_RING_BUFS);
 
+	/*
+	 * Can goto here again if caller wants blocking. NOTE that
+	 * num_requested may have been decremented and consumed may have been
+	 * incremented if we arrive here via a goto after a cv_wait.
+	 */
 from_the_top:
 	if (cfw_ringstart > cfw_ringend || cfw_ringfull)
 		contig_size = IPF_CFW_RING_BUFS - cfw_ringstart;
@@ -283,7 +285,12 @@ from_the_top:
 		clock_t delta = drv_usectohz(cfw_timeout_wait);
 
 		timeout_tries--;
-		/* Nothing to consume, wait *a little bit* longer. */
+
+		/*
+		 * We obtained some of the events we requested, but not all.
+		 * Since we have nothing to consume, wait *a little bit*
+		 * longer.
+		 */
 		switch (cv_reltimedwait_sig(&cfw_ringcv, &cfw_ringlock, delta,
 		    TR_CLOCK_TICK)) {
 		case 0:
@@ -359,8 +366,9 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	    CFWDIR_IN : CFWDIR_OUT;
 
 	event.cfwev_protocol = fin->fin_p;
-	/* NOTE: fin_*port is in host/native order. */
-	/* XXX KEBE SAYS ICMP stuff should fall in here too. */
+	/*
+	 * NOTE: fin_*port is in host/native order, and ICMP info is here too.
+	 */
 	event.cfwev_sport = htons(fin->fin_sport);
 	event.cfwev_dport = htons(fin->fin_dport);
 
@@ -374,9 +382,8 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	}
 
 	/*
-	 * XXX KEBE ASKS -> something better instead?!?
-	 * uniqtime() is what ipf's GETKTIME() uses. It does give us tv_usec,
-	 * but I'm not sure if it's suitable for what we need.
+	 * uniqtime() is what ipf's GETKTIME() uses.
+	 * If cfwev_tstamp needs to be sourced from elsewhere, fix that here.
 	 */
 	uniqtime(&event.cfwev_tstamp);
 	event.cfwev_zonedid = ifs_to_did(ifs);
@@ -385,7 +392,6 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 	memcpy(event.cfwev_ruleuuid, fr->fr_uuid, sizeof (uuid_t));
 
 	ipf_cfwev_report(&event);
-	/* DTRACE_PROBE1(ipf__cfw__block, cfwev_t *, &event); */
 }
 
 /*
@@ -413,7 +419,10 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 		event.cfwev_type = CFWEV_END;
 		break;
 #else
-		/* We don't care about disappearances in CFW logging for now. */
+		/*
+		 * We don't care about session disappearances in CFW logging
+		 * for now.
+		 */
 		return;
 #endif
 	default:
@@ -454,19 +463,16 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 	}
 
 	/*
-	 * XXX KEBE ASKS -> something better instead?!?
-	 * uniqtime() is what ipf's GETKTIME() uses. It does give us tv_usec,
-	 * but I'm not sure if it's suitable for what we need.
+	 * uniqtime() is what ipf's GETKTIME() uses.
+	 * If cfwev_tstamp needs to be sourced from elsewhere, fix that here.
 	 */
 	uniqtime(&event.cfwev_tstamp);
 	event.cfwev_zonedid = ifs_to_did(ifs);
-	/* XXX KEBE ASKS -> good enough? */
 	ASSERT(is->is_rulen <= 0xffff);	/* Must fit in uint16_t... */
 	event.cfwev_ruleid = is->is_rulen;
 	memcpy(event.cfwev_ruleuuid, is->is_uuid, sizeof (uuid_t));
 
 	ipf_cfwev_report(&event);
-	/* DTRACE_PROBE1(ipf__cfw__state, cfwev_t *, &event); */
 }
 
 typedef struct uio_error_s {
@@ -474,6 +480,7 @@ typedef struct uio_error_s {
 	int ue_error;
 } uio_error_t;
 
+/* Returning 0 means error indication. */
 static uint_t
 cfwlog_read_manycb(cfwev_t *evptr, uint_t num_avail, void *cbarg)
 {
@@ -481,14 +488,12 @@ cfwlog_read_manycb(cfwev_t *evptr, uint_t num_avail, void *cbarg)
 
 	ASSERT(MUTEX_HELD(&cfw_ringlock));
 
-	/* XXX KEBE ASKS Should this be an ASSERT()? */
 	if (ue->ue_error != 0)
 		return (0);
 
 	ue->ue_error = uiomove((caddr_t)evptr, num_avail * sizeof (*evptr),
 	    UIO_READ, ue->ue_uio);
-	/* 0 means error indication. */
-	if (ue->ue_error)
+	if (ue->ue_error != 0)
 		return (0);
 
 	return (num_avail);
@@ -526,7 +531,7 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 	} else if (ue.ue_error != 0 || (block && consumed == 0)) {
 		/* We had a problem... */
 		if (ue.ue_error == 0) {
-			/* Cover cv_wait_sig() receiving a signal. */
+			/* Cover case of cv_wait_sig() receiving a signal. */
 			ue.ue_error = EINTR;
 		}
 		mutex_enter(&cfw_ringlock);
@@ -538,7 +543,8 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 }
 
 #else
-/* Blank stubs to satisfy userland's test stuff. */
+
+/* Blank stubs to satisfy userland's test compilations. */
 
 void
 ipf_log_cfwlog(struct ipstate *a, uint_t b, ipf_stack_t *c)

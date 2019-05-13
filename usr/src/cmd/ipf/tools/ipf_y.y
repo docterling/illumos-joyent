@@ -1,7 +1,6 @@
 %{
 /*
  * Copyright (C) 2003 by Darren Reed.
- * Copyright 2019 Joyent, Inc.
  *
  * See the IPFILTER.LICENCE file for details on licencing.
  *

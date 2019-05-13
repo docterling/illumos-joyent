@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  *
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #if !defined(lint)
@@ -907,9 +907,8 @@ int *rp;
 		return ENXIO;
 	unit = isp->ipfs_minor;
 
-	/* XXX KEBE SAYS CONFIRM ME */
 	if (unit == IPL_LOGEV)
-		return (EIO);	/* We don't support ioctls yet. */
+		return (EIO);	/* ipfev doesn't support ioctls yet. */
 
 	zid = crgetzoneid(cp);
 	if (cmd == SIOCIPFZONESET) {
@@ -1395,9 +1394,8 @@ cred_t *cp;
 		return ENXIO;
 	unit = isp->ipfs_minor;
 
-	/* XXX KEBE SAYS CONFIRM ME */
 	if (unit == IPL_LOGEV)
-		return (EIO);	/* We don't support write yet. */
+		return (EIO);	/* ipfev doesn't support write yet. */
 
         /*
 	 * ipf_find_stack returns with a read lock on ifs_ipf_global

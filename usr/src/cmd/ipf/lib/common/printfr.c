@@ -10,8 +10,6 @@
  * Copyright 2019 Joyent, Inc.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <uuid/uuid.h>
 
 #include "ipf.h"

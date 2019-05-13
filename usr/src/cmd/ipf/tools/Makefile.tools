@@ -23,7 +23,7 @@
 # Use is subject to license terms.
 #
 # Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
-# Copyright (c) 2012, Joyent Inc. All rights reserved.
+# Copyright 2019 Joyent, Inc.
 #
 
 PROG=		ipf ipfs ipmon ipnat ippool ipfstat

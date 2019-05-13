@@ -9,8 +9,6 @@
  * http://www.illumos.org/license/CDDL.
  */
 
-/* XXX KEBE ASKS --> Is this affected instead by the IPFILTER.LICENCE? */
-
 /*
  * Copyright 2019, Joyent, Inc.
  */
@@ -28,10 +26,10 @@
 #endif	/* ASSERT3U */
 
 /*
- * CFW Event.  Emitted to a global-zone listener. The global-zone listern
- * solves the one-fd-per-zone problem of using each zone's ipmon.
+ * CFW Event, which is emitted to a global-zone listener. The global-zone
+ * listener solves the one-fd-per-zone problem of using each zone's ipmon.
  *
- * These should be 64-bit aligned. There are reserved fields to insure it.
+ * These must be 64-bit aligned. There might be reserved fields to insure it.
  */
 #define	CFWEV_BLOCK	1
 #define	CFWEV_BEGIN	2
@@ -48,16 +46,15 @@ typedef struct cfwev_s {
 	uint8_t cfwev_protocol;	/* IPPROTO_* */
 	/* "direction" informs if src/dst are local/remote or remote/local. */
 	uint8_t cfwev_direction;
-	uint16_t cfwev_sport;	/* Source port */
-	uint16_t cfwev_dport;	/* Dest. port */
+	uint16_t cfwev_sport;	/* Source port (network order) */
+	uint16_t cfwev_dport;	/* Dest. port (network order) */
 
 	in6_addr_t cfwev_saddr;	/* IPv4 addresses are V4MAPPED. */
 	in6_addr_t cfwev_daddr;
 
-	/* XXX KEBE ASKS hrtime for relative time from some start instead? */
 	/*
-	 * XXX KEBE ALSO ASKS --> we allowing this to be used by 32-bit apps?
-	 * If NOT, then we're cool. IF SO, we have a 32/64 problem.
+	 * Because of 'struct timeval' being different between 32-bit and
+	 * 64-bit ABIs, this interface is only usable by 64-bit binaries.
 	 */
 	struct timeval cfwev_tstamp;
 
