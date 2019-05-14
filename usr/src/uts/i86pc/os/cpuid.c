@@ -2355,13 +2355,6 @@ cpuid_scan_security(cpu_t *cpu, uchar_t *featureset)
 	 * MDS, the L1D flush also clears the other u-arch state that the
 	 * md_clear does.
 	 */
-	if (is_x86_feature(featureset, X86FSET_RDCL_NO)) {
-		extern int smt_exclusion;
-		smt_exclusion = 0;
-		spec_uarch_flush = spec_uarch_flush_noop;
-		membar_producer();
-		return;
-	}
 
 	/*
 	 * Update whether or not we need to be taking explicit action against
