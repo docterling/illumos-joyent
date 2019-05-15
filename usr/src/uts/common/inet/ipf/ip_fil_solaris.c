@@ -908,7 +908,7 @@ int *rp;
 	unit = isp->ipfs_minor;
 
 	if (unit == IPL_LOGEV)
-		return (EIO);	/* ipfev doesn't support ioctls yet. */
+		return (ipf_cfwlog_ioctl(dev, cmd, data, mode, cp, rp));
 
 	zid = crgetzoneid(cp);
 	if (cmd == SIOCIPFZONESET) {

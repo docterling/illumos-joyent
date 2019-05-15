@@ -116,6 +116,7 @@
 #define	SIOCDELFR	SIOCRMAFR
 #define	SIOCINSFR	SIOCINAFR
 # define	SIOCIPFZONESET	_IOWR('r', 97, struct ipfzoneobj)
+# define	SIOCIPFCFWCFG	_IOWR('r', 98, struct ipfcfwcfg)
 
 /*
  * What type of table is getting flushed?
@@ -1186,6 +1187,12 @@ typedef	struct	ipfzoneobj	{
 	char		ipfz_zonename[ZONENAME_MAX];	/* zone to act on */
 } ipfzoneobj_t;
 
+/* ioctl to grab CFW logging parameters */
+typedef struct ipfcfwcfg {
+	uint32_t ipfcfwc_maxevsize;
+	uint32_t ipfcfwc_evringsize;
+} ipfcfwcfg_t;
+
 #if defined(_KERNEL)
 /* Set ipfs_zoneid to this if no zone has been set: */
 #define IPFS_ZONE_UNSET	-2
@@ -1579,6 +1586,7 @@ typedef uint_t (*cfwmanycb_t) __P((struct cfwev_s *, uint_t, void *));
 extern uint_t
 	ipf_cfwev_consume_many __P((uint_t, boolean_t, cfwmanycb_t, void *));
 extern int ipf_cfwlog_read __P((dev_t, struct uio *, struct cred *));
+extern int ipf_cfwlog_ioctl __P((dev_t, int, intptr_t, int, cred_t *, int *));
 
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));
 extern	int		fr_copytolog __P((int, char *, int));

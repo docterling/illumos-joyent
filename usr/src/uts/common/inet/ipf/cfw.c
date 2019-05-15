@@ -501,6 +501,37 @@ cfwlog_read_manycb(cfwev_t *evptr, uint_t num_avail, void *cbarg)
 
 /* ARGSUSED */
 int
+ipf_cfwlog_ioctl(dev_t dev, int cmd, intptr_t data, int mode, cred_t *cp,
+    int *rp)
+{
+	ipfcfwcfg_t cfginfo;
+	int error;
+
+	if (cmd != SIOCIPFCFWCFG)
+		return (EIO);
+
+	if (crgetzoneid(cp) != GLOBAL_ZONEID)
+		return (EACCES);
+
+#ifdef notyet
+	error = COPYIN((caddr_t)data, (caddr_t)&cfginfo, sizeof (cfginfo));
+	if (error != 0)
+		return (EFAULT);
+	/* TODO: Resize ring buffer based on cfginfo.ipfcfwc_evringsize. */
+#endif
+
+	cfginfo.ipfcfwc_maxevsize = sizeof (cfwev_t);
+	cfginfo.ipfcfwc_evringsize = IPF_CFW_RING_BUFS;
+
+	error = COPYOUT((caddr_t)&cfginfo, (caddr_t)data, sizeof (cfginfo));
+	if (error != 0)
+		return (EFAULT);
+
+	return (0);
+}
+
+/* ARGSUSED */
+int
 ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 {
 	uint_t requested, consumed;
