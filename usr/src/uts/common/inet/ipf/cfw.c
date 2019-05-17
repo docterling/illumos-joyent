@@ -97,14 +97,18 @@ boolean_t ipf_cfwlog_enabled;
 
 /* Must be a power of 2, to be bitmaskable, and must be countable by a uint_t */
 
-#define	IPF_CFW_RING_BUFS	1024
-#define	IPF_CFW_RING_MASK (IPF_CFW_RING_BUFS - 1)
+#define	IPF_CFW_DEFAULT_RING_BUFS	1024
+#define	IPF_CFW_MIN_RING_BUFS		8
+#define	IPF_CFW_MAX_RING_BUFS		(1U << 31U)
 
 /* Assume C's init-to-zero is sufficient for these types... */
 static kmutex_t cfw_ringlock;
 static kcondvar_t cfw_ringcv;
 
-static cfwev_t cfw_evring[IPF_CFW_RING_BUFS];
+static cfwev_t *cfw_ring;	/* NULL by default. */
+static uint32_t cfw_ringsize;	/* 0 by default, number of array elements. */
+static uint32_t cfw_ringmask;	/* 0 by default. */
+
 /* If these are equal, we're either empty or full. */
 static uint_t cfw_ringstart, cfw_ringend;
 static boolean_t cfw_ringfull;	/* Tell the difference here! */
@@ -123,16 +127,16 @@ ipf_cfwev_report(cfwev_t *event)
 	mutex_enter(&cfw_ringlock);
 	if (cfw_ringfull) {
 		cfw_ringstart++;
-		cfw_ringstart &= IPF_CFW_RING_MASK;
+		cfw_ringstart &= cfw_ringmask;
 		cfw_ringend++;
-		cfw_ringend &= IPF_CFW_RING_MASK;
+		cfw_ringend &= cfw_ringmask;
 		DTRACE_PROBE(ipf__cfw__evdrop);
 		cfw_evdrops++;
-		cfw_evring[cfw_ringend] = *event;
+		cfw_ring[cfw_ringend] = *event;
 	} else {
-		cfw_evring[cfw_ringend] = *event;
+		cfw_ring[cfw_ringend] = *event;
 		cfw_ringend++;
-		cfw_ringend &= IPF_CFW_RING_MASK;
+		cfw_ringend &= cfw_ringmask;
 		cfw_ringfull = (cfw_ringend == cfw_ringstart);
 	}
 	cfw_evreports++;
@@ -164,7 +168,7 @@ ipf_cfwev_consume(cfwev_t *event, boolean_t block)
 		}
 	}
 
-	*event = cfw_evring[cfw_ringstart];
+	*event = cfw_ring[cfw_ringstart];
 	cfw_ringstart++;
 	cfw_ringstart &= IPF_CFW_RING_MASK;
 	cfw_ringfull = B_FALSE;
@@ -214,8 +218,8 @@ ipf_cfwev_consume_many(uint_t num_requested, boolean_t block,
 	mutex_enter(&cfw_ringlock);
 
 	/* Silly reality checks */
-	ASSERT3U(cfw_ringstart, <, IPF_CFW_RING_BUFS);
-	ASSERT3U(cfw_ringend, <, IPF_CFW_RING_BUFS);
+	ASSERT3U(cfw_ringstart, <, cfw_ringsize);
+	ASSERT3U(cfw_ringend, <, cfw_ringsize);
 
 	/*
 	 * Can goto here again if caller wants blocking. NOTE that
@@ -224,7 +228,7 @@ ipf_cfwev_consume_many(uint_t num_requested, boolean_t block,
 	 */
 from_the_top:
 	if (cfw_ringstart > cfw_ringend || cfw_ringfull)
-		contig_size = IPF_CFW_RING_BUFS - cfw_ringstart;
+		contig_size = cfw_ringsize - cfw_ringstart;
 	else if (cfw_ringstart < cfw_ringend)
 		contig_size = cfw_ringend - cfw_ringstart;
 	else if (block && cv_wait_sig(&cfw_ringcv, &cfw_ringlock)) {
@@ -236,12 +240,12 @@ from_the_top:
 	}
 
 	ASSERT(contig_size + cfw_ringstart == cfw_ringend ||
-	    contig_size + cfw_ringstart == IPF_CFW_RING_BUFS);
+	    contig_size + cfw_ringstart == cfw_ringsize);
 
 	if (num_requested < contig_size)
 		contig_size = num_requested;
 
-	cb_consumed = cfw_many_cb(&(cfw_evring[cfw_ringstart]), contig_size,
+	cb_consumed = cfw_many_cb(&(cfw_ring[cfw_ringstart]), contig_size,
 	    cbarg);
 	ASSERT(cb_consumed <= contig_size);
 	cfw_ringstart += cb_consumed;
@@ -249,11 +253,11 @@ from_the_top:
 	cfw_ringfull = (cfw_ringfull && cb_consumed == 0);
 	if (cb_consumed < contig_size) {
 		/* Caller clearly had a problem. Reality check and bail. */
-		ASSERT((cfw_ringstart & IPF_CFW_RING_MASK) == cfw_ringstart);
+		ASSERT((cfw_ringstart & cfw_ringmask) == cfw_ringstart);
 		goto bail;
 	}
 	ASSERT(cb_consumed == contig_size);
-	cfw_ringstart &= IPF_CFW_RING_MASK;	/* In case of wraparound. */
+	cfw_ringstart &= cfw_ringmask;	/* In case of wraparound. */
 	num_requested -= contig_size;
 
 	if (num_requested > 0 && cfw_ringstart != cfw_ringend) {
@@ -263,7 +267,7 @@ from_the_top:
 		contig_size = cfw_ringend;
 		if (num_requested < contig_size)
 			contig_size = num_requested;
-		cb_consumed = cfw_many_cb(&(cfw_evring[cfw_ringstart]),
+		cb_consumed = cfw_many_cb(&(cfw_ring[cfw_ringstart]),
 		    contig_size, cbarg);
 		cfw_ringstart += cb_consumed;
 		consumed += cb_consumed;
@@ -499,6 +503,53 @@ cfwlog_read_manycb(cfwev_t *evptr, uint_t num_avail, void *cbarg)
 	return (num_avail);
 }
 
+int
+ipf_cfw_ring_resize(uint32_t newsize)
+{
+	ASSERT(MUTEX_HELD(&cfw_ringlock) || newsize == IPF_CFW_RING_ALLOCATE ||
+	    newsize == IPF_CFW_RING_DESTROY);
+
+	if (newsize == IPF_CFW_RING_ALLOCATE) {
+		if (cfw_ring != NULL)
+			return (EBUSY);
+		newsize = IPF_CFW_DEFAULT_RING_BUFS;
+		/* Fall through to allocating a new ring buffer. */
+	} else {
+		/* We may be called during error cleanup, so be liberal here. */
+		if ((cfw_ring == NULL && newsize == IPF_CFW_RING_DESTROY) ||
+		    newsize == cfw_ringsize) {
+			return (0);
+		}
+		kmem_free(cfw_ring, cfw_ringsize * sizeof (cfwev_t));
+		cfw_ring = NULL;
+		if (cfw_ringfull) {
+			cfw_evdrops += cfw_ringsize;
+		} else if (cfw_ringstart > cfw_ringend) {
+			cfw_evdrops += cfw_ringend +
+			    (cfw_ringsize - cfw_ringstart);
+		} else {
+			cfw_evdrops += cfw_ringend - cfw_ringstart;
+		}
+		cfw_ringsize = cfw_ringmask = cfw_ringstart = cfw_ringend = 0;
+		cfw_ringfull = B_FALSE;
+
+		if (newsize == IPF_CFW_RING_DESTROY)
+			return (0);
+		/*
+		 * Keep the reports & drops around because if we're just
+		 * resizing, we need to know what we lost.
+		 */
+	}
+
+	ASSERT(ISP2(newsize));
+	cfw_ring = kmem_alloc(newsize * sizeof (cfwev_t), KM_SLEEP);
+	/* KM_SLEEP means we always succeed. */
+	cfw_ringsize = newsize;
+	cfw_ringmask = cfw_ringsize - 1;
+
+	return (0);
+}
+
 /* ARGSUSED */
 int
 ipf_cfwlog_ioctl(dev_t dev, int cmd, intptr_t data, int mode, cred_t *cp,
@@ -507,21 +558,39 @@ ipf_cfwlog_ioctl(dev_t dev, int cmd, intptr_t data, int mode, cred_t *cp,
 	ipfcfwcfg_t cfginfo;
 	int error;
 
-	if (cmd != SIOCIPFCFWCFG)
+	if (cmd != SIOCIPFCFWCFG && cmd != SIOCIPFCFWNEWSZ)
 		return (EIO);
 
 	if (crgetzoneid(cp) != GLOBAL_ZONEID)
 		return (EACCES);
 
-#ifdef notyet
 	error = COPYIN((caddr_t)data, (caddr_t)&cfginfo, sizeof (cfginfo));
 	if (error != 0)
 		return (EFAULT);
-	/* TODO: Resize ring buffer based on cfginfo.ipfcfwc_evringsize. */
-#endif
 
 	cfginfo.ipfcfwc_maxevsize = sizeof (cfwev_t);
-	cfginfo.ipfcfwc_evringsize = IPF_CFW_RING_BUFS;
+	mutex_enter(&cfw_ringlock);
+	cfginfo.ipfcfwc_evreports = cfw_evreports;
+	if (cmd == SIOCIPFCFWNEWSZ) {
+		uint32_t newsize = cfginfo.ipfcfwc_evringsize;
+
+		/* Do ioctl parameter checking here, then call the resizer. */
+		if (newsize < IPF_CFW_MIN_RING_BUFS ||
+		    newsize > IPF_CFW_MAX_RING_BUFS || !ISP2(newsize)) {
+			error = EINVAL;
+		} else {
+			error = ipf_cfw_ring_resize(cfginfo.ipfcfwc_evringsize);
+		}
+	} else {
+		error = 0;
+	}
+	/* Both cfw_evdrops and cfw_ringsize are affected by resize. */
+	cfginfo.ipfcfwc_evdrops = cfw_evdrops;
+	cfginfo.ipfcfwc_evringsize = cfw_ringsize;
+	mutex_exit(&cfw_ringlock);
+
+	if (error != 0)
+		return (error);
 
 	error = COPYOUT((caddr_t)&cfginfo, (caddr_t)data, sizeof (cfginfo));
 	if (error != 0)
@@ -576,6 +645,12 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 #else
 
 /* Blank stubs to satisfy userland's test compilations. */
+
+int
+ipf_cfw_ring_resize(uint32_t a)
+{
+	return (0);
+}
 
 void
 ipf_log_cfwlog(struct ipstate *a, uint_t b, ipf_stack_t *c)

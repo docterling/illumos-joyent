@@ -741,6 +741,9 @@ ddi_attach_cmd_t cmd;
 
 		ipf_dev_info = dip;
 
+		if (ipf_cfw_ring_resize(IPF_CFW_RING_ALLOCATE) != 0)
+			goto attach_failed;
+
 		ipfncb = net_instance_alloc(NETINFO_VERSION);
 		if (ipfncb == NULL)
 			goto attach_failed;
@@ -768,6 +771,7 @@ ddi_attach_cmd_t cmd;
 	}
 
 attach_failed:
+	(void) ipf_cfw_ring_resize(IPF_CFW_RING_DESTROY);
 	ddi_remove_minor_node(dip, NULL);
 	ddi_prop_remove_all(dip);
 	ddi_soft_state_fini(&ipf_state);
@@ -795,6 +799,7 @@ ddi_detach_cmd_t cmd;
 		 * framework guarantees we are not active with this devinfo
 		 * node in any other entry points at this time.
 		 */
+		(void) ipf_cfw_ring_resize(IPF_CFW_RING_DESTROY);
 		ddi_prop_remove_all(dip);
 		i = ddi_get_instance(dip);
 		ddi_remove_minor_node(dip, NULL);

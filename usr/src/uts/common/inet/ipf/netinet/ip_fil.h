@@ -116,7 +116,8 @@
 #define	SIOCDELFR	SIOCRMAFR
 #define	SIOCINSFR	SIOCINAFR
 # define	SIOCIPFZONESET	_IOWR('r', 97, struct ipfzoneobj)
-# define	SIOCIPFCFWCFG	_IOWR('r', 98, struct ipfcfwcfg)
+# define	SIOCIPFCFWCFG	_IOR('r', 98, struct ipfcfwcfg)
+# define	SIOCIPFCFWNEWSZ	_IOWR('r', 99, struct ipfcfwcfg)
 
 /*
  * What type of table is getting flushed?
@@ -1189,8 +1190,17 @@ typedef	struct	ipfzoneobj	{
 
 /* ioctl to grab CFW logging parameters */
 typedef struct ipfcfwcfg {
+	/* CFG => Max event size, NEWSZ => ignored in, like CFG out. */
 	uint32_t ipfcfwc_maxevsize;
+	/*
+	 * CFG => Current ring size,
+	 * NEWSZ => New ring size, must be 2^N for 10 <= N <= 31.
+	 */
 	uint32_t ipfcfwc_evringsize;
+	/* CFG => Number of event reports, NEWSZ => ignored in, like CFG out. */
+	uint64_t ipfcfwc_evreports;
+	/* CFG => Number of event drops, NEWSZ => ignored in, like CFG out. */
+	uint64_t ipfcfwc_evdrops;
 } ipfcfwcfg_t;
 
 #if defined(_KERNEL)
@@ -1587,6 +1597,9 @@ extern uint_t
 	ipf_cfwev_consume_many __P((uint_t, boolean_t, cfwmanycb_t, void *));
 extern int ipf_cfwlog_read __P((dev_t, struct uio *, struct cred *));
 extern int ipf_cfwlog_ioctl __P((dev_t, int, intptr_t, int, cred_t *, int *));
+#define	IPF_CFW_RING_ALLOCATE 0
+#define	IPF_CFW_RING_DESTROY 1
+extern int ipf_cfw_ring_resize(uint32_t);
 
 extern	frentry_t	*fr_acctpkt __P((fr_info_t *, u_32_t *));
 extern	int		fr_copytolog __P((int, char *, int));
