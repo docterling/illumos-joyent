@@ -71,10 +71,9 @@
  * ipf events for SmartOS.  The only ones that CFW cares about are ones
  * enforced by global-zone-controlled rulesets.
  *
- * The variable below is mdb-hackable to experiment with turning it on and
- * off. Eventually this will tie into a new ipf (GZ-only) device that flips
- * this on when there is an open instance.  It may also consume an fr_flag
- * to have per-rule granularity.
+ * The variable below is tied into a new ipf (GZ-only) device: /dev/ipfev,
+ * that flips this on when there is an open instance.  This feature will also
+ * consume an fr_flag to have per-rule granularity.
  */
 boolean_t ipf_cfwlog_enabled;
 
@@ -88,15 +87,13 @@ boolean_t ipf_cfwlog_enabled;
  * CFW event ring buffer.  Remember, this is for ALL ZONES because only a
  * global-zone event-reader will be consuming these.  In other words, it's
  * not something to instantiate per-netstack.
- */
-
-/*
+ *
  * We may want to get more sophisticated and performant (e.g. per-processor),
  * but for now keep the ring buffer simple and stupid.
+ * Must be a power of 2, to be bitmaskable, and must be countable by a uint_t
+ *
+ * Resizeable, see ipf_cfw_ring_resize() below.
  */
-
-/* Must be a power of 2, to be bitmaskable, and must be countable by a uint_t */
-
 #define	IPF_CFW_DEFAULT_RING_BUFS	1024
 #define	IPF_CFW_MIN_RING_BUFS		8
 #define	IPF_CFW_MAX_RING_BUFS		(1U << 31U)
@@ -112,6 +109,7 @@ static uint32_t cfw_ringmask;	/* 0 by default. */
 /* If these are equal, we're either empty or full. */
 static uint_t cfw_ringstart, cfw_ringend;
 static boolean_t cfw_ringfull;	/* Tell the difference here! */
+/* Bean-counters. */
 static uint64_t cfw_evreports;
 static uint64_t cfw_evdrops;
 
@@ -147,8 +145,8 @@ ipf_cfwev_report(cfwev_t *event)
 #if 0
 /*
  * Simple event consumer which copies one event from the ring buffer into
- * what's provided.  In the future, maybe lock-then-callback, even with a
- * request for multiple events?
+ * what's provided.  Superceded by ipf_cfwev_consume_many() below.  Kept here
+ * for reference.
  *
  * If there are no events, either cv_wait() or return B_FALSE, depending on
  * "block".
@@ -195,9 +193,11 @@ ipf_cfwev_consume(cfwev_t *event, boolean_t block)
  * were consumed.
  *
  * This function, like the callback, returns the number of events *CONSUMED*.
- */
-
-/*
+ *
+ * .  .  .
+ *
+ * Tunables for ipf_cfwev_consume_many().
+ *
  * If you wish to attempt to coalesce reads (to reduce the likelihood of one
  * event at a time during high load) change the number of tries below to
  * something not 0. Early experiments set this to 10.
@@ -319,6 +319,10 @@ bail:
 	return (consumed);
 }
 
+/*
+ * SmartOS likes using the zone's did. Make sure we squirrel that away in the
+ * ipf netstack instance if it's not there.
+ */
 static inline zoneid_t
 ifs_to_did(ipf_stack_t *ifs)
 {
@@ -344,8 +348,8 @@ ifs_to_did(ipf_stack_t *ifs)
 /*
  * ipf_block_cfwlog()
  *
- * Called by fr_check().  Record drop events for a global-zone data collector.
- * Use rest-of-ipf-style names for the parameters.
+ * Called by fr_check().  Record drop events for the global-zone data
+ * collector.  Use rest-of-ipf-style names for the parameters.
  */
 void
 ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
@@ -401,7 +405,7 @@ ipf_block_cfwlog(frentry_t *fr, fr_info_t *fin, ipf_stack_t *ifs)
 /*
  * ipf_log_cfwlog()
  *
- * Twin of ipstate_log(), but records state events for a global-zone data
+ * Twin of ipstate_log(), but records state events for the global-zone data
  * collector.
  */
 void
@@ -436,7 +440,8 @@ ipf_log_cfwlog(struct ipstate *is, uint_t type, ipf_stack_t *ifs)
 
 	/*
 	 * IPF code elsewhere does the cheesy single-flag check, even thogh
-	 * there are two flags in a rule (one for in, one for out).
+	 * there are two flags in a rule (one for in, one for out).  Follow
+	 * suit here.
 	 */
 	event.cfwev_length = sizeof (event);
 	ASSERT(is->is_rule != NULL);
@@ -484,7 +489,10 @@ typedef struct uio_error_s {
 	int ue_error;
 } uio_error_t;
 
-/* Returning 0 means error indication. */
+/*
+ * Callback routine we use for ipf_cfwev_consume_many().
+ * Returning 0 means error indication.
+ */
 static uint_t
 cfwlog_read_manycb(cfwev_t *evptr, uint_t num_avail, void *cbarg)
 {
@@ -503,6 +511,14 @@ cfwlog_read_manycb(cfwev_t *evptr, uint_t num_avail, void *cbarg)
 	return (num_avail);
 }
 
+/*
+ * Resize the CFW event ring buffer.
+ *
+ * The caller must insure the new size is a power of 2 between
+ * IPF_CFW_{MIN,MAX}_RING_BUFS (inclusive) or the special values
+ * IPF_CFW_RING_ALLOCATE (first-time creation) or IPF_CFW_RING_DESTROY
+ * (netstack-unload destruction).
+ */
 int
 ipf_cfw_ring_resize(uint32_t newsize)
 {
@@ -550,6 +566,11 @@ ipf_cfw_ring_resize(uint32_t newsize)
 	return (0);
 }
 
+/*
+ * ioctl handler for /dev/ipfev.  Only supports SIOCIPFCFWCFG (get data
+ * collector statistics and configuration), and SIOCIPFCFWNEWSZ (resize the
+ * event ring buffer).
+ */
 /* ARGSUSED */
 int
 ipf_cfwlog_ioctl(dev_t dev, int cmd, intptr_t data, int mode, cred_t *cp,
@@ -599,6 +620,9 @@ ipf_cfwlog_ioctl(dev_t dev, int cmd, intptr_t data, int mode, cred_t *cp,
 	return (0);
 }
 
+/*
+ * Send events up via /dev/ipfev reads.  Will return only complete events.
+ */
 /* ARGSUSED */
 int
 ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
@@ -642,7 +666,7 @@ ipf_cfwlog_read(dev_t dev, struct uio *uio, cred_t *cp)
 	return (ue.ue_error);
 }
 
-#else
+#else	/* _KERNEL */
 
 /* Blank stubs to satisfy userland's test compilations. */
 

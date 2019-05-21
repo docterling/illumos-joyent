@@ -1194,7 +1194,7 @@ typedef struct ipfcfwcfg {
 	uint32_t ipfcfwc_maxevsize;
 	/*
 	 * CFG => Current ring size,
-	 * NEWSZ => New ring size, must be 2^N for 10 <= N <= 31.
+	 * NEWSZ => New ring size, must be 2^N for 3 <= N <= 31.
 	 */
 	uint32_t ipfcfwc_evringsize;
 	/* CFG => Number of event reports, NEWSZ => ignored in, like CFG out. */
